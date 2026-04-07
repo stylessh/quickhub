@@ -40,7 +40,7 @@ function Home() {
 								Circle base imported
 							</Badge>
 							<div className="space-y-3">
-								<CardTitle className="text-4xl tracking-tight sm:text-5xl">
+								<CardTitle className="text-3xl tracking-tight sm:text-4xl">
 									QuickHub, now on a shared UI foundation.
 								</CardTitle>
 								<CardDescription className="max-w-2xl text-base leading-7 text-muted-foreground">

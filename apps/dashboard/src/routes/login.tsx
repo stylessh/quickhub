@@ -23,7 +23,7 @@ function LoginPage() {
 		<main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_color-mix(in_oklch,_var(--color-primary)_6%,_transparent),_transparent_48%),linear-gradient(180deg,_color-mix(in_oklch,_var(--color-secondary)_65%,_white)_0%,_transparent_45%)] px-4">
 			<Card className="w-full max-w-md border-border/70 bg-background/95 shadow-sm backdrop-blur">
 				<CardHeader className="text-center">
-					<CardTitle className="text-3xl tracking-tight">
+					<CardTitle className="text-2xl tracking-tight sm:text-3xl">
 						Sign in to QuickHub
 					</CardTitle>
 					<CardDescription className="text-base">

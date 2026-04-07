@@ -40,7 +40,7 @@ function DashboardPage() {
 							</Avatar>
 							<div className="space-y-1">
 								<div className="flex items-center gap-2">
-									<CardTitle className="text-2xl tracking-tight">
+									<CardTitle className="text-xl tracking-tight sm:text-2xl">
 										Welcome, {displayName}
 									</CardTitle>
 									<Badge variant="secondary">Connected</Badge>
