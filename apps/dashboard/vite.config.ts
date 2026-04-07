@@ -7,18 +7,22 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { getSharedWranglerStatePath } from "../../scripts/shared-worktree-paths.mjs";
+import {
+	getSharedWranglerStatePath,
+	isWorktreeCheckout,
+} from "../../scripts/shared-worktree-paths.mjs";
 
-const sharedStatePath = getSharedWranglerStatePath(
-	new URL(".", import.meta.url),
-);
+const dashboardRoot = new URL(".", import.meta.url);
+const worktreePersistState = isWorktreeCheckout(dashboardRoot)
+	? { persistState: { path: getSharedWranglerStatePath(dashboardRoot) } }
+	: {};
 
 const config = defineConfig({
 	plugins: [
 		devtools(),
 		cloudflare({
 			viteEnvironment: { name: "ssr" },
-			persistState: { path: sharedStatePath },
+			...worktreePersistState,
 		}),
 		tsconfigPaths({ projects: ["./tsconfig.json"] }),
 		tailwindcss(),
