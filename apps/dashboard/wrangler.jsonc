@@ -1,7 +1,15 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "tanstack-start-app",
+	"name": "quickhub-dashboard",
 	"compatibility_date": "2025-09-02",
 	"compatibility_flags": ["nodejs_compat"],
-	"main": "@tanstack/react-start/server-entry"
+	"main": "@tanstack/react-start/server-entry",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "quickhub-db",
+			"database_id": "placeholder-create-with-wrangler-d1-create",
+			"migrations_dir": "drizzle"
+		}
+	]
 }
