@@ -3,6 +3,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.dev.vars
 .env
 .env.*
 !.env.example
