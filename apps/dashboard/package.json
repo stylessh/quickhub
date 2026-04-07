@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@cloudflare/vite-plugin": "^1.26.0",
+		"@quickhub/icons": "workspace:*",
 		"@quickhub/ui": "workspace:*",
 		"@tailwindcss/vite": "^4.1.18",
 		"@tanstack/react-devtools": "latest",
@@ -32,6 +33,7 @@
 		"better-auth": "^1.6.0",
 		"drizzle-orm": "^0.45.2",
 		"lucide-react": "^0.545.0",
+		"next-themes": "^0.4.6",
 		"octokit": "^5.0.5",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
