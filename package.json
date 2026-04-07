@@ -2,6 +2,7 @@
   "name": "quickhub",
   "private": true,
   "scripts": {
+    "predev": "node scripts/link-worktree-dev-vars.mjs",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
