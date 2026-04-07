@@ -1,3 +1,16 @@
+import {
+	Avatar,
+	AvatarFallback,
+	AvatarImage,
+} from "@quickhub/ui/components/avatar";
+import { Badge } from "@quickhub/ui/components/badge";
+import { Button } from "@quickhub/ui/components/button";
+import {
+	Card,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@quickhub/ui/components/card";
 import { createFileRoute } from "@tanstack/react-router";
 import { signOut } from "#/lib/auth.client";
 
@@ -7,31 +20,80 @@ export const Route = createFileRoute("/_protected/dashboard")({
 
 function DashboardPage() {
 	const { user } = Route.useRouteContext();
+	const displayName = user.name ?? user.email ?? "QuickHub user";
+	const initials = displayName
+		.split(" ")
+		.map((part) => part[0])
+		.join("")
+		.slice(0, 2)
+		.toUpperCase();
 
 	return (
-		<main className="p-8">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					{user.image && (
-						<img
-							src={user.image}
-							alt={user.name}
-							className="h-10 w-10 rounded-full"
-						/>
-					)}
-					<h1 className="text-2xl font-bold">Welcome, {user.name}</h1>
-				</div>
-				<button
-					type="button"
-					onClick={() =>
-						signOut().then(() => {
-							window.location.href = "/";
-						})
-					}
-					className="rounded-md border px-4 py-2 hover:bg-neutral-100 transition-colors"
-				>
-					Sign out
-				</button>
+		<main className="min-h-screen bg-[linear-gradient(180deg,_color-mix(in_oklch,_var(--color-secondary)_55%,_transparent)_0%,_transparent_38%)] p-4 sm:p-8">
+			<div className="mx-auto grid max-w-5xl gap-6">
+				<Card className="border-border/70 bg-background/95 shadow-sm">
+					<CardHeader className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+						<div className="flex items-center gap-4">
+							<Avatar className="size-14 border border-border/70">
+								<AvatarImage src={user.image ?? undefined} alt={displayName} />
+								<AvatarFallback>{initials}</AvatarFallback>
+							</Avatar>
+							<div className="space-y-1">
+								<div className="flex items-center gap-2">
+									<CardTitle className="text-2xl tracking-tight">
+										Welcome, {displayName}
+									</CardTitle>
+									<Badge variant="secondary">Connected</Badge>
+								</div>
+								<CardDescription className="text-sm">
+									The dashboard now pulls from the shared Circle-derived
+									component library in <code>@quickhub/ui</code>.
+								</CardDescription>
+							</div>
+						</div>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() =>
+								signOut().then(() => {
+									window.location.href = "/";
+								})
+							}
+						>
+							Sign out
+						</Button>
+					</CardHeader>
+				</Card>
+
+				<section className="grid gap-4 md:grid-cols-3">
+					<Card className="border-border/70 bg-background/90">
+						<CardHeader>
+							<CardTitle className="text-base">Theme</CardTitle>
+							<CardDescription>
+								Circle tokens now define the workspace palette and surface
+								language.
+							</CardDescription>
+						</CardHeader>
+					</Card>
+					<Card className="border-border/70 bg-background/90">
+						<CardHeader>
+							<CardTitle className="text-base">Primitives</CardTitle>
+							<CardDescription>
+								Shared buttons, cards, badges, dialogs, forms, and more now live
+								in the UI package.
+							</CardDescription>
+						</CardHeader>
+					</Card>
+					<Card className="border-border/70 bg-background/90">
+						<CardHeader>
+							<CardTitle className="text-base">Next step</CardTitle>
+							<CardDescription>
+								Build QuickHub-specific layouts on top of these imported
+								foundation pieces.
+							</CardDescription>
+						</CardHeader>
+					</Card>
+				</section>
 			</div>
 		</main>
 	);
