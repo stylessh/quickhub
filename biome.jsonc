@@ -1,4 +1,16 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.5/schema.json",
-  "extends": ["ultracite/biome/core"]
+  "extends": ["ultracite/biome/core"],
+  "overrides": [
+    {
+      "includes": ["packages/icons/**"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ]
 }

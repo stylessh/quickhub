@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { Agentation } from "agentation";
+import { ThemeProvider } from "next-themes";
 
 import appCss from "../styles.css?url";
 
@@ -48,5 +49,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-	return <Outlet />;
+	return (
+		<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+			<Outlet />
+		</ThemeProvider>
+	);
 }
