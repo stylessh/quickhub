@@ -68,20 +68,23 @@
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.141 0.005 285.823);
 	--container: #fff;
+	--surface-0: oklch(0.967 0.001 286.375);
+	--surface-1: oklch(0.945 0.002 286.375);
+	--surface-2: oklch(0.925 0.003 286.375);
 }
 
 .dark {
 	--background: oklch(0.141 0.005 285.823);
 	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.141 0.005 285.823);
+	--card: oklch(0.205 0.006 285.885);
 	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.141 0.005 285.823);
+	--popover: oklch(0.225 0.006 285.885);
 	--popover-foreground: oklch(0.985 0 0);
 	--primary: oklch(0.985 0 0);
 	--primary-foreground: oklch(0.21 0.006 285.885);
 	--secondary: oklch(0.274 0.006 286.033);
 	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.274 0.006 286.033);
+	--muted: oklch(0.16 0.005 285.823);
 	--muted-foreground: oklch(0.705 0.015 286.067);
 	--accent: oklch(0.274 0.006 286.033);
 	--accent-foreground: oklch(0.985 0 0);
@@ -104,6 +107,9 @@
 	--sidebar-border: oklch(0.274 0.006 286.033);
 	--sidebar-ring: oklch(0.442 0.017 285.786);
 	--container: #101011;
+	--surface-0: oklch(0.21 0.006 286.033);
+	--surface-1: oklch(0.245 0.006 286.033);
+	--surface-2: oklch(0.28 0.006 286.033);
 }
 
 @theme inline {
@@ -144,6 +150,9 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-container: var(--container);
+	--color-surface-0: var(--surface-0);
+	--color-surface-1: var(--surface-1);
+	--color-surface-2: var(--surface-2);
 }
 
 @layer base {
@@ -153,6 +162,8 @@
 
 	body {
 		@apply bg-background text-foreground;
+		font-size: 13px;
+		font-weight: 450;
 	}
 }
 
