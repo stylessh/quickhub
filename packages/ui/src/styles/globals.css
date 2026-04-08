@@ -167,6 +167,91 @@
 	}
 }
 
+/* Custom scrollbar — thumb only, no track, overlays content */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border) transparent;
+}
+
+*::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: var(--ring);
+}
+
+.dark *::-webkit-scrollbar-thumb {
+	background: var(--surface-2);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+	background: var(--ring);
+}
+
+/* Stable scrollbar — auto-hides, no layout shift, inset thumb */
+.overflow-stable {
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	scrollbar-width: auto;
+	scrollbar-color: transparent transparent;
+}
+
+.overflow-stable::-webkit-scrollbar {
+	width: 20px;
+}
+
+.overflow-stable::-webkit-scrollbar-thumb {
+	background: transparent;
+	border: 7px solid transparent;
+	border-radius: 9999px;
+	background-clip: padding-box;
+	transition: background 0.2s;
+}
+
+.overflow-stable:hover::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border: 7px solid transparent;
+	background-clip: padding-box;
+}
+
+.overflow-stable:hover::-webkit-scrollbar-thumb:hover {
+	background: var(--ring);
+	border: 7px solid transparent;
+	background-clip: padding-box;
+}
+
+.dark .overflow-stable:hover::-webkit-scrollbar-thumb {
+	background: var(--surface-2);
+	border: 7px solid transparent;
+	background-clip: padding-box;
+}
+
+.dark .overflow-stable:hover::-webkit-scrollbar-thumb:hover {
+	background: var(--ring);
+	border: 7px solid transparent;
+	background-clip: padding-box;
+}
+
+/* Firefox — hide when not hovering */
+.overflow-stable:not(:hover) {
+	scrollbar-color: transparent transparent;
+}
+
+.overflow-stable:hover {
+	scrollbar-color: var(--border) transparent;
+}
+
 input::-webkit-search-cancel-button {
 	-webkit-appearance: none;
 	appearance: none;
