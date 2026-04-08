@@ -28,7 +28,7 @@ import { useHasMounted } from "#/lib/use-has-mounted";
 import { useRegisterTab } from "#/lib/use-register-tab";
 
 export const Route = createFileRoute("/_protected/$owner/$repo/pull/$pullId")({
-	loader: async ({ context, params, preload }) => {
+	loader: async ({ context, params }) => {
 		const pullNumber = Number(params.pullId);
 		const scope = { userId: context.user.id };
 		const pageOptions = githubPullPageQueryOptions(scope, {
@@ -36,10 +36,6 @@ export const Route = createFileRoute("/_protected/$owner/$repo/pull/$pullId")({
 			repo: params.repo,
 			pullNumber,
 		});
-
-		if (!preload) {
-			return;
-		}
 
 		const primeQuery = (options: { queryKey: readonly unknown[] }) => {
 			if (context.queryClient.getQueryData(options.queryKey) !== undefined) {
@@ -102,16 +98,13 @@ function PullDetailPage() {
 	const statusQuery = useQuery({
 		...githubPullStatusQueryOptions(scope, { owner, repo, pullNumber }),
 		enabled: hasMounted && pageQuery.data?.detail != null,
-		initialData: pageQuery.data?.status ?? undefined,
-		initialDataUpdatedAt: pageQuery.dataUpdatedAt,
-		refetchOnMount: false,
 		refetchOnWindowFocus: "always",
 		refetchInterval: githubCachePolicy.status.staleTimeMs,
 	});
 
 	const pr = pageQuery.data?.detail;
 	const comments = pageQuery.data?.comments;
-	const status = statusQuery.data ?? pageQuery.data?.status ?? null;
+	const status = statusQuery.data ?? null;
 
 	useRegisterTab(
 		pr

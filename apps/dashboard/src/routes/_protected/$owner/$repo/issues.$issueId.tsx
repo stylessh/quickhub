@@ -19,7 +19,7 @@ import { useRegisterTab } from "#/lib/use-register-tab";
 export const Route = createFileRoute(
 	"/_protected/$owner/$repo/issues/$issueId",
 )({
-	loader: async ({ context, params, preload }) => {
+	loader: async ({ context, params }) => {
 		const issueNumber = Number(params.issueId);
 		const scope = { userId: context.user.id };
 		const pageOptions = githubIssuePageQueryOptions(scope, {
@@ -27,10 +27,6 @@ export const Route = createFileRoute(
 			repo: params.repo,
 			issueNumber,
 		});
-
-		if (!preload) {
-			return;
-		}
 
 		const primeQuery = (options: { queryKey: readonly unknown[] }) => {
 			if (context.queryClient.getQueryData(options.queryKey) !== undefined) {

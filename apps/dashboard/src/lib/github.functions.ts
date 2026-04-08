@@ -754,15 +754,11 @@ async function getPullPageDataResult(
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
 	});
 
-	const [comments, status] = await Promise.all([
-		getPullCommentsResult(context, data),
-		getPullStatusResult(context, data, pull),
-	]);
+	const comments = await getPullCommentsResult(context, data);
 
 	return {
 		detail: mapPullDetail(pull, buildRepositoryRef(data.owner, data.repo)),
 		comments,
-		status,
 	};
 }
 

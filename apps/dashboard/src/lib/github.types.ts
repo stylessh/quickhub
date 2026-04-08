@@ -155,5 +155,4 @@ export type PullStatus = {
 export type PullPageData = {
 	detail: PullDetail | null;
 	comments: PullComment[];
-	status: PullStatus | null;
 };

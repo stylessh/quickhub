@@ -211,7 +211,7 @@ export function githubPullPageQueryOptions(
 	return queryOptions({
 		queryKey: githubQueryKeys.pulls.page(scope, input),
 		queryFn: () => getPullPageData({ data: input }),
-		staleTime: githubCachePolicy.status.staleTimeMs,
+		staleTime: githubCachePolicy.activity.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		refetchOnMount: "always",
 		refetchOnWindowFocus: "always",
