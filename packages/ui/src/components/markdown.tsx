@@ -107,7 +107,11 @@ const components: Components = {
 	),
 	hr: (props) => <hr className="my-4 border-border" {...props} />,
 	img: ({ alt, ...props }) => (
-		<img className="max-w-full rounded-lg my-2" alt={alt} {...props} />
+		<img
+			className="inline-block max-w-full rounded-lg my-2"
+			alt={alt}
+			{...props}
+		/>
 	),
 	table: ({ children, ...props }) => (
 		<div className="overflow-hidden mb-2 rounded-lg border border-border bg-surface-0">
