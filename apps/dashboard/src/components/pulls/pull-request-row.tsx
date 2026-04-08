@@ -7,6 +7,7 @@ import {
 	ViewIcon,
 } from "@quickhub/icons";
 import { Markdown } from "@quickhub/ui/components/markdown";
+import { cn } from "@quickhub/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -68,9 +69,12 @@ export function PullRequestRow({
 		<div className="rounded-lg">
 			<Link
 				to={href}
-				className={`group flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:[&:not(:has([data-action]:hover))]:bg-surface-1 ${expanded ? "bg-surface-1" : ""}`}
+				className={cn(
+					"group flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:[&:not(:has([data-action]:hover))]:bg-surface-1",
+					expanded && "bg-surface-1",
+				)}
 			>
-				<div className={`mt-[3px] shrink-0 ${color}`}>
+				<div className={cn("mt-[3px] shrink-0", color)}>
 					<Icon size={16} strokeWidth={2} />
 				</div>
 				<div className="min-w-0 flex-1 flex flex-col gap-1">
@@ -148,7 +152,10 @@ export function PullRequestRow({
 							{commentsQuery.data.map((comment, i) => (
 								<div
 									key={comment.id}
-									className={`flex flex-col gap-1 ${i === commentsQuery.data!.length - 1 ? "pb-4" : ""}`}
+									className={cn(
+										"flex flex-col gap-1",
+										i === commentsQuery.data.length - 1 && "pb-4",
+									)}
 								>
 									<div className="flex items-center gap-1.5">
 										{comment.author && (
