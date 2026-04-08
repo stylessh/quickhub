@@ -1,6 +1,6 @@
+import { AlertCircleIcon, RefreshCwIcon } from "@diffkit/icons";
 import { Button } from "@diffkit/ui/components/button";
 import { type ErrorComponentProps, useRouter } from "@tanstack/react-router";
-import { AlertCircleIcon, RefreshCwIcon } from "lucide-react";
 
 export function ErrorScreen({ reset }: ErrorComponentProps) {
 	const router = useRouter();

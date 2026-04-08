@@ -1,20 +1,22 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@diffkit/icons";
 import type * as React from "react";
 import { DayPicker } from "react-day-picker";
 
 import { cn } from "../lib/utils";
 import { buttonVariants } from "./button";
 
-function CalendarIconLeft(props: React.ComponentProps<typeof ChevronLeft>) {
+function CalendarIconLeft(props: React.ComponentProps<typeof ChevronLeftIcon>) {
 	const { className, ...rest } = props;
-	return <ChevronLeft className={cn("size-4", className)} {...rest} />;
+	return <ChevronLeftIcon className={cn("size-4", className)} {...rest} />;
 }
 
-function CalendarIconRight(props: React.ComponentProps<typeof ChevronRight>) {
+function CalendarIconRight(
+	props: React.ComponentProps<typeof ChevronRightIcon>,
+) {
 	const { className, ...rest } = props;
-	return <ChevronRight className={cn("size-4", className)} {...rest} />;
+	return <ChevronRightIcon className={cn("size-4", className)} {...rest} />;
 }
 
 function Calendar({

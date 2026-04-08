@@ -1,4 +1,4 @@
-import { LoaderCircleIcon } from "lucide-react";
+import { LoaderCircleIcon } from "@diffkit/icons";
 
 export function DashboardContentLoading() {
 	return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { GripVerticalIcon } from "lucide-react";
+import { GripVerticalIcon } from "@diffkit/icons";
 import type * as React from "react";
 import * as ResizablePrimitive from "react-resizable-panels";
 

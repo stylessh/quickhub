@@ -1,7 +1,7 @@
 "use client";
 
+import { SearchIcon } from "@diffkit/icons";
 import { Command as CommandPrimitive } from "cmdk";
-import { SearchIcon } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../lib/utils";
