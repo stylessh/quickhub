@@ -22,7 +22,10 @@ export const Route = createRootRouteWithContext<{
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
 			{ title: "DiffKit Dashboard" },
 		],
-		links: [{ rel: "stylesheet", href: appCss }],
+		links: [
+			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+			{ rel: "stylesheet", href: appCss },
+		],
 	}),
 	component: RootComponent,
 	errorComponent: ErrorScreen,

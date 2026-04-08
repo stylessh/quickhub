@@ -1,7 +1,12 @@
 {
-	"short_name": "TanStack App",
-	"name": "Create TanStack App Sample",
+	"short_name": "DiffKit",
+	"name": "DiffKit Dashboard",
 	"icons": [
+		{
+			"src": "favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml"
+		},
 		{
 			"src": "favicon.ico",
 			"sizes": "64x64 32x32 24x24 16x16",
@@ -20,6 +25,6 @@
 	],
 	"start_url": ".",
 	"display": "standalone",
-	"theme_color": "#000000",
+	"theme_color": "#00C943",
 	"background_color": "#ffffff"
 }

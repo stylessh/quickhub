@@ -72,6 +72,7 @@
 	--surface-1: oklch(0.945 0.002 286.375);
 	--surface-2: oklch(0.925 0.003 286.375);
 	--color-green-500: oklch(0.62 0.194 149.214);
+	--brand: oklch(0.68 0.2 150);
 }
 
 .dark {
@@ -111,6 +112,7 @@
 	--surface-0: oklch(0.21 0.006 286.033);
 	--surface-1: oklch(0.245 0.006 286.033);
 	--surface-2: oklch(0.28 0.006 286.033);
+	--brand: oklch(0.75 0.2 150);
 }
 
 @theme inline {
@@ -154,6 +156,7 @@
 	--color-surface-0: var(--surface-0);
 	--color-surface-1: var(--surface-1);
 	--color-surface-2: var(--surface-2);
+	--color-brand: var(--brand);
 }
 
 @layer base {
