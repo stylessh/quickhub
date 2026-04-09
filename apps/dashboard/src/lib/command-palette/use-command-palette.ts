@@ -15,7 +15,7 @@ export function useCommandPalette() {
 	const [open, setOpen] = useState(false);
 	const router = useRouter();
 	const chordRef = useRef<string[]>([]);
-	const chordTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const chordTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	useEffect(() => {
 		function resetChord() {
