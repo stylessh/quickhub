@@ -205,6 +205,7 @@ function ReviewersSection({
 					: requestPullReviewers({
 							data: { owner, repo, pullNumber, reviewers: [login] },
 						}),
+			isSuccess: (r) => r.ok,
 			updates: [
 				{
 					queryKey: pageQueryKey,
@@ -247,6 +248,7 @@ function ReviewersSection({
 					: requestPullReviewers({
 							data: { owner, repo, pullNumber, teamReviewers: [slug] },
 						}),
+			isSuccess: (r) => r.ok,
 			updates: [
 				{
 					queryKey: pageQueryKey,

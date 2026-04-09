@@ -79,6 +79,10 @@ export function getGitHubAppAuthConfig() {
 	};
 }
 
+export function getGitHubAppSlug(): string | null {
+	return pickFirstNonEmpty(getWorkerEnv().GITHUB_APP_SLUG) ?? null;
+}
+
 export function getGitHubWebhookSecret() {
 	return pickFirstNonEmpty(getWorkerEnv().GITHUB_WEBHOOK_SECRET) ?? null;
 }

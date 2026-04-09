@@ -7,6 +7,7 @@ import {
 } from "#/lib/github.query";
 import { useGitHubRevalidation } from "#/lib/use-github-revalidation";
 import { useHasMounted } from "#/lib/use-has-mounted";
+import { DashboardBottomBar } from "./dashboard-bottombar";
 import { DashboardTopbar } from "./dashboard-topbar";
 
 const routeApi = getRouteApi("/_protected");
@@ -57,6 +58,7 @@ export function DashboardLayout() {
 					</div>
 				</div>
 			</div>
+			<DashboardBottomBar />
 			<CommandPalette />
 		</div>
 	);

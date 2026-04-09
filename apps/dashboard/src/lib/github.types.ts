@@ -135,6 +135,7 @@ export type PullCheckRun = {
 	name: string;
 	status: string;
 	conclusion: string | null;
+	appAvatarUrl: string | null;
 };
 
 export type PullReview = {
@@ -152,6 +153,7 @@ export type PullStatus = {
 		pending: number;
 		skipped: number;
 	};
+	checkRuns: PullCheckRun[];
 	mergeable: boolean | null;
 	mergeableState: string | null;
 	behindBy: number | null;

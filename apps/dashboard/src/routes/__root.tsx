@@ -1,3 +1,4 @@
+import { Toaster } from "@diffkit/ui/components/sonner";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -84,6 +85,7 @@ function RootComponent() {
 	return (
 		<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
 			<Outlet />
+			<Toaster />
 		</ThemeProvider>
 	);
 }

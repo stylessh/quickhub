@@ -27,6 +27,7 @@ import type {
 	SubmitReviewInput,
 	UserRepoSummary,
 } from "./github.types";
+import { getGitHubAppSlug } from "./github-app.server";
 import {
 	bustGitHubCache,
 	createGitHubResponseMetadata,
@@ -166,6 +167,43 @@ export type PullsFromRepoInput = {
 	sort?: PullSort;
 	direction?: "asc" | "desc";
 };
+
+export type MutationResult =
+	| { ok: true }
+	| { ok: false; error: string; installUrl?: string };
+
+function toMutationError(action: string, error: unknown): MutationResult {
+	console.error(`[${action}]`, error);
+	if (error instanceof RequestError) {
+		if (error.status === 403) {
+			const slug = getGitHubAppSlug();
+			return {
+				ok: false,
+				error: `Failed to ${action}: Insufficient permissions`,
+				installUrl: slug
+					? `https://github.com/apps/${slug}/installations/new`
+					: undefined,
+			};
+		}
+		if (error.status === 404) {
+			return { ok: false, error: `Failed to ${action}: Resource not found` };
+		}
+		if (error.status === 422) {
+			return { ok: false, error: `Failed to ${action}: Validation failed` };
+		}
+		if (error.status === 409) {
+			return {
+				ok: false,
+				error: `Failed to ${action}: Conflict — head branch may have been modified`,
+			};
+		}
+		const msg =
+			(error.response?.data as { message?: string } | undefined)?.message ??
+			error.message;
+		return { ok: false, error: `Failed to ${action}: ${msg}` };
+	}
+	return { ok: false, error: `Failed to ${action}: Unknown error` };
+}
 
 export type PullFromRepoInput = {
 	owner: string;
@@ -810,7 +848,7 @@ async function computePullStatus(
 
 	const permissions = pull.base.repo.permissions;
 	const canUpdateBranch =
-		permissions?.push === true || permissions?.admin === true;
+		!permissions || permissions.push === true || permissions.admin === true;
 
 	return {
 		reviews: Array.from(latestReviews.values()),
@@ -821,6 +859,13 @@ async function computePullStatus(
 			pending,
 			skipped,
 		},
+		checkRuns: checkRuns.map((check) => ({
+			id: check.id,
+			name: check.name,
+			status: check.status,
+			conclusion: check.conclusion,
+			appAvatarUrl: check.app?.owner?.avatar_url ?? null,
+		})),
 		mergeable: pull.mergeable,
 		mergeableState:
 			typeof pull.mergeable_state === "string" ? pull.mergeable_state : null,
@@ -1532,10 +1577,10 @@ export const updatePullBody = createServerFn({ method: "POST" })
 
 export const updatePullBranch = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
-	.handler(async ({ data }): Promise<boolean> => {
+	.handler(async ({ data }): Promise<MutationResult> => {
 		const context = await getGitHubContext();
 		if (!context) {
-			return false;
+			return { ok: false, error: "Not authenticated" };
 		}
 
 		try {
@@ -1545,9 +1590,35 @@ export const updatePullBranch = createServerFn({ method: "POST" })
 				pull_number: data.pullNumber,
 			});
 			await bustPullDetailCaches(context.session.user.id, data);
-			return true;
-		} catch {
-			return false;
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("update branch", error);
+		}
+	});
+
+export type MergePullInput = PullFromRepoInput & {
+	mergeMethod: "merge" | "squash" | "rebase";
+};
+
+export const mergePullRequest = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<MergePullInput>)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubContext();
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.rest.pulls.merge({
+				owner: data.owner,
+				repo: data.repo,
+				pull_number: data.pullNumber,
+				merge_method: data.mergeMethod,
+			});
+			await bustPullDetailCaches(context.session.user.id, data);
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("merge pull request", error);
 		}
 	});
 
@@ -1814,10 +1885,10 @@ export const getOrgTeams = createServerFn({ method: "GET" })
 
 export const requestPullReviewers = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
-	.handler(async ({ data }): Promise<boolean> => {
+	.handler(async ({ data }): Promise<MutationResult> => {
 		const context = await getGitHubContext();
 		if (!context) {
-			return false;
+			return { ok: false, error: "Not authenticated" };
 		}
 
 		try {
@@ -1833,18 +1904,18 @@ export const requestPullReviewers = createServerFn({ method: "POST" })
 				repo: data.repo,
 				pullNumber: data.pullNumber,
 			});
-			return true;
-		} catch {
-			return false;
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("request reviewers", error);
 		}
 	});
 
 export const removeReviewRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
-	.handler(async ({ data }): Promise<boolean> => {
+	.handler(async ({ data }): Promise<MutationResult> => {
 		const context = await getGitHubContext();
 		if (!context) {
-			return false;
+			return { ok: false, error: "Not authenticated" };
 		}
 
 		try {
@@ -1860,9 +1931,44 @@ export const removeReviewRequest = createServerFn({ method: "POST" })
 				repo: data.repo,
 				pullNumber: data.pullNumber,
 			});
-			return true;
-		} catch {
-			return false;
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("remove review request", error);
+		}
+	});
+
+export type DismissReviewInput = {
+	owner: string;
+	repo: string;
+	pullNumber: number;
+	reviewId: number;
+	message: string;
+};
+
+export const dismissPullReview = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<DismissReviewInput>)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubContext();
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.rest.pulls.dismissReview({
+				owner: data.owner,
+				repo: data.repo,
+				pull_number: data.pullNumber,
+				review_id: data.reviewId,
+				message: data.message,
+			});
+			await bustPullDetailCaches(context.session.user.id, {
+				owner: data.owner,
+				repo: data.repo,
+				pullNumber: data.pullNumber,
+			});
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("dismiss review", error);
 		}
 	});
 

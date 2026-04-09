@@ -6,6 +6,8 @@
 # 5. Install the app on the repositories or organizations you want DiffKit to access
 GITHUB_APP_CLIENT_ID=
 GITHUB_APP_CLIENT_SECRET=
+# The slug from your GitHub App URL (https://github.com/apps/<slug>)
+GITHUB_APP_SLUG=
 
 # GitHub webhook secret used to verify deliveries to /api/webhooks/github
 # For local development, point your GitHub App webhook URL at a tunnel that forwards here.

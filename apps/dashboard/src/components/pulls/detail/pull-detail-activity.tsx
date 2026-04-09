@@ -1,6 +1,27 @@
-import { GitCommitIcon } from "@diffkit/icons";
+import {
+	CheckIcon,
+	ChevronDownIcon,
+	ChevronUpIcon,
+	GitCommitIcon,
+	GitMergeIcon,
+	MoreHorizontalIcon,
+	XIcon,
+} from "@diffkit/icons";
+import { Button } from "@diffkit/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@diffkit/ui/components/collapsible";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@diffkit/ui/components/dropdown-menu";
 import { Markdown } from "@diffkit/ui/components/markdown";
 import { Skeleton } from "@diffkit/ui/components/skeleton";
+import { toast } from "@diffkit/ui/components/sonner";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -9,13 +30,20 @@ import {
 	DetailCommentBox,
 } from "#/components/details/detail-activity";
 import { formatRelativeTime } from "#/lib/format-relative-time";
-import { updatePullBranch } from "#/lib/github.functions";
+import {
+	dismissPullReview,
+	mergePullRequest,
+	requestPullReviewers,
+	updatePullBranch,
+} from "#/lib/github.functions";
 import type {
+	PullCheckRun,
 	PullComment,
 	PullCommit,
 	PullDetail,
 	PullStatus,
 } from "#/lib/github.types";
+import { checkPermissionWarning } from "#/lib/warning-store";
 
 export function PullDetailActivitySection({
 	comments,
@@ -112,6 +140,7 @@ function MergeStatusCard({
 }) {
 	const {
 		checks,
+		checkRuns,
 		reviews,
 		mergeable,
 		mergeableState,
@@ -119,84 +148,52 @@ function MergeStatusCard({
 		baseRefName,
 		canUpdateBranch,
 	} = status;
-	const [isUpdating, setIsUpdating] = useState(false);
 
-	const approvedReviews = reviews.filter(
-		(review) => review.state === "APPROVED",
-	);
+	const approvedReviews = reviews.filter((r) => r.state === "APPROVED");
 	const changesRequested = reviews.filter(
-		(review) => review.state === "CHANGES_REQUESTED",
-	);
-	const pendingReviewers = reviews.filter(
-		(review) => review.state === "PENDING",
+		(r) => r.state === "CHANGES_REQUESTED",
 	);
 
-	const hasReviewIssue =
-		changesRequested.length > 0 || pendingReviewers.length > 0;
+	const hasReviewIssue = changesRequested.length > 0;
 	const allChecksPassed =
 		checks.total > 0 && checks.failed === 0 && checks.pending === 0;
 	const hasCheckFailures = checks.failed > 0;
-	const hasChecksPending = checks.pending > 0;
 	const isBehind = behindBy !== null && behindBy > 0;
+	const hasConflicts = mergeableState === "dirty";
 	const isMergeBlocked = mergeableState === "blocked" || mergeable === false;
 
 	return (
 		<div className="flex flex-col rounded-lg border">
-			<StatusRow
-				icon={
-					changesRequested.length > 0 ? (
-						<StatusDot color="text-red-500" />
-					) : approvedReviews.length > 0 && !hasReviewIssue ? (
-						<StatusDot color="text-green-500" />
-					) : (
-						<StatusDot color="text-yellow-500" />
-					)
-				}
-				title={
-					changesRequested.length > 0
-						? "Changes requested"
-						: approvedReviews.length > 0
-							? `${approvedReviews.length} approving review${approvedReviews.length > 1 ? "s" : ""}`
-							: "Review required"
-				}
-				description={
-					changesRequested.length > 0
-						? `${changesRequested.map((review) => review.author?.login).join(", ")} requested changes`
-						: approvedReviews.length > 0 && !hasReviewIssue
-							? "All required reviews have been provided"
-							: "Code owner review required by reviewers with write access."
-				}
+			{/* Reviews section */}
+			<ReviewsSection
+				approvedReviews={approvedReviews}
+				changesRequested={changesRequested}
+				hasReviewIssue={hasReviewIssue}
+				owner={owner}
+				repo={repo}
+				pullNumber={pullNumber}
 			/>
 
+			{/* Checks section */}
 			{checks.total > 0 && (
-				<StatusRow
-					icon={
-						allChecksPassed ? (
-							<StatusDot color="text-green-500" />
-						) : hasCheckFailures ? (
-							<StatusDot color="text-red-500" />
-						) : (
-							<StatusDot color="text-yellow-500" />
-						)
-					}
-					title={
-						allChecksPassed
-							? "All checks have passed"
-							: hasCheckFailures
-								? `${checks.failed} failing check${checks.failed > 1 ? "s" : ""}`
-								: `${checks.pending} pending check${checks.pending > 1 ? "s" : ""}`
-					}
-					description={
-						`${checks.skipped > 0 ? `${checks.skipped} skipped, ` : ""}${checks.passed} successful check${checks.passed !== 1 ? "s" : ""}` +
-						(hasChecksPending ? `, ${checks.pending} pending` : "") +
-						(hasCheckFailures ? `, ${checks.failed} failing` : "")
-					}
+				<ChecksSection
+					checks={checks}
+					checkRuns={checkRuns}
+					allChecksPassed={allChecksPassed}
+					hasCheckFailures={hasCheckFailures}
 				/>
 			)}
 
-			{isBehind && (
+			{/* Conflicts / branch status */}
+			{hasConflicts ? (
 				<StatusRow
-					icon={<StatusDot color="text-yellow-500" />}
+					icon={<StatusIcon status="error" />}
+					title="This branch has conflicts that must be resolved"
+					description="Use the command line to resolve conflicts."
+				/>
+			) : isBehind ? (
+				<StatusRow
+					icon={<StatusIcon status="pending" />}
 					title="This branch is out-of-date with the base branch"
 					description={`Merge the latest changes from ${baseRefName} into this branch.`}
 					action={
@@ -205,54 +202,560 @@ function MergeStatusCard({
 								owner={owner}
 								repo={repo}
 								pullNumber={pullNumber}
-								isUpdating={isUpdating}
-								setIsUpdating={setIsUpdating}
+							/>
+						) : undefined
+					}
+				/>
+			) : (
+				<StatusRow
+					icon={<StatusIcon status="success" />}
+					title="No conflicts with base branch"
+					description="Merging can be performed automatically."
+					action={
+						canUpdateBranch ? (
+							<UpdateBranchButton
+								owner={owner}
+								repo={repo}
+								pullNumber={pullNumber}
 							/>
 						) : undefined
 					}
 				/>
 			)}
 
-			<StatusRow
-				icon={
-					isMergeBlocked ? (
-						<StatusDot color="text-yellow-500" />
-					) : (
-						<StatusDot color="text-green-500" />
-					)
-				}
-				title={isMergeBlocked ? "Merging is blocked" : "Ready to merge"}
-				description={
-					isMergeBlocked
-						? "All required conditions have not been met."
-						: "All required conditions have been satisfied."
-				}
-				isLast
+			{/* Merge action footer */}
+			<MergeFooter
+				isMergeBlocked={isMergeBlocked}
+				owner={owner}
+				repo={repo}
+				pullNumber={pullNumber}
 			/>
 		</div>
 	);
 }
+
+// ── Reviews section ─────────────────────────────────────────────────
+
+function ReviewsSection({
+	approvedReviews,
+	changesRequested,
+	hasReviewIssue,
+	owner,
+	repo,
+	pullNumber,
+}: {
+	approvedReviews: {
+		id: number;
+		state: string;
+		author: { login: string; avatarUrl: string } | null;
+	}[];
+	changesRequested: {
+		id: number;
+		state: string;
+		author: { login: string; avatarUrl: string } | null;
+	}[];
+	hasReviewIssue: boolean;
+	owner: string;
+	repo: string;
+	pullNumber: number;
+}) {
+	const [open, setOpen] = useState(true);
+	const queryClient = useQueryClient();
+
+	const reviewStatus: StatusType = hasReviewIssue
+		? "error"
+		: approvedReviews.length > 0
+			? "success"
+			: "pending";
+
+	const title = hasReviewIssue
+		? "Changes requested"
+		: approvedReviews.length > 0
+			? "Changes approved"
+			: "Review required";
+
+	const description = hasReviewIssue
+		? `${changesRequested.map((r) => r.author?.login).join(", ")} requested changes`
+		: approvedReviews.length > 0
+			? `${approvedReviews.length} approving review${approvedReviews.length > 1 ? "s" : ""} by reviewers with write access.`
+			: "Code owner review required by reviewers with write access.";
+
+	const allReviews = [...approvedReviews, ...changesRequested];
+
+	return (
+		<Collapsible open={open} onOpenChange={setOpen}>
+			<CollapsibleTrigger asChild>
+				<button
+					type="button"
+					className="flex w-full items-start gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors hover:bg-surface-1/50"
+				>
+					<div className="mt-0.5 shrink-0">
+						<StatusIcon status={reviewStatus} />
+					</div>
+					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+						<p className="text-sm font-medium">{title}</p>
+						<p className="text-xs text-muted-foreground">{description}</p>
+					</div>
+					<div className="mt-0.5 shrink-0 text-muted-foreground">
+						{open ? (
+							<ChevronUpIcon size={16} strokeWidth={2} />
+						) : (
+							<ChevronDownIcon size={16} strokeWidth={2} />
+						)}
+					</div>
+				</button>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				{allReviews.length > 0 && (
+					<div className="flex flex-col border-b border-border/50 bg-surface-1/50 py-1">
+						{allReviews.map((review) => (
+							<div
+								key={review.id}
+								className="flex items-center gap-2 px-4 py-1.5 pl-11"
+							>
+								<CheckRunIcon
+									status={review.state === "APPROVED" ? "success" : "failure"}
+								/>
+								{review.author && (
+									<img
+										src={review.author.avatarUrl}
+										alt={review.author.login}
+										className="size-4 rounded-full border border-border"
+									/>
+								)}
+								<span className="text-xs">
+									{review.author?.login ?? "Unknown"}
+								</span>
+								<span
+									className={cn(
+										"ml-auto text-xs",
+										review.state === "APPROVED"
+											? "text-green-600 dark:text-green-400"
+											: "text-red-600 dark:text-red-400",
+									)}
+								>
+									{review.state === "APPROVED"
+										? "Approved"
+										: "Changes requested"}
+								</span>
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<button
+											type="button"
+											className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+										>
+											<MoreHorizontalIcon size={14} strokeWidth={2} />
+										</button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end">
+										<DropdownMenuItem
+											onClick={() => {
+												void dismissPullReview({
+													data: {
+														owner,
+														repo,
+														pullNumber,
+														reviewId: review.id,
+														message: "Dismissed via QuickHub",
+													},
+												})
+													.then((result) => {
+														if (result.ok) {
+															void queryClient.invalidateQueries({
+																queryKey: ["github"],
+															});
+														} else {
+															toast.error(result.error);
+															checkPermissionWarning(
+																result,
+																`${owner}/${repo}`,
+															);
+														}
+													})
+													.catch(() => {
+														toast.error("Failed to dismiss review");
+													});
+											}}
+										>
+											Dismiss review
+										</DropdownMenuItem>
+										{review.author && (
+											<DropdownMenuItem
+												onClick={() => {
+													void requestPullReviewers({
+														data: {
+															owner,
+															repo,
+															pullNumber,
+															reviewers: [review.author!.login],
+														},
+													})
+														.then((result) => {
+															if (result.ok) {
+																void queryClient.invalidateQueries({
+																	queryKey: ["github"],
+																});
+															} else {
+																toast.error(result.error);
+																checkPermissionWarning(
+																	result,
+																	`${owner}/${repo}`,
+																);
+															}
+														})
+														.catch(() => {
+															toast.error("Failed to re-request review");
+														});
+												}}
+											>
+												Re-request review
+											</DropdownMenuItem>
+										)}
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</div>
+						))}
+					</div>
+				)}
+			</CollapsibleContent>
+		</Collapsible>
+	);
+}
+
+// ── Checks section ──────────────────────────────────────────────────
+
+function ChecksSection({
+	checks,
+	checkRuns,
+	allChecksPassed,
+	hasCheckFailures,
+}: {
+	checks: PullStatus["checks"];
+	checkRuns: PullCheckRun[];
+	allChecksPassed: boolean;
+	hasCheckFailures: boolean;
+}) {
+	const [open, setOpen] = useState(true);
+
+	const checkStatus: StatusType = allChecksPassed
+		? "success"
+		: hasCheckFailures
+			? "error"
+			: "pending";
+
+	const title = allChecksPassed
+		? "All checks have passed"
+		: hasCheckFailures
+			? `${checks.failed} failing check${checks.failed > 1 ? "s" : ""}`
+			: `${checks.pending} pending check${checks.pending > 1 ? "s" : ""}`;
+
+	const parts: string[] = [];
+	if (checks.skipped > 0) parts.push(`${checks.skipped} skipped`);
+	parts.push(
+		`${checks.passed} successful check${checks.passed !== 1 ? "s" : ""}`,
+	);
+	if (checks.pending > 0) parts.push(`${checks.pending} pending`);
+	if (checks.failed > 0) parts.push(`${checks.failed} failing`);
+	const description = parts.join(", ");
+
+	// Sort: failed first, then pending, then skipped, then passed
+	const sortedRuns = [...checkRuns].sort((a, b) => {
+		const order = (run: PullCheckRun) => {
+			if (run.status !== "completed") return 1;
+			if (
+				run.conclusion === "failure" ||
+				run.conclusion === "timed_out" ||
+				run.conclusion === "cancelled"
+			)
+				return 0;
+			if (run.conclusion === "skipped") return 2;
+			return 3;
+		};
+		return order(a) - order(b);
+	});
+
+	return (
+		<Collapsible open={open} onOpenChange={setOpen}>
+			<CollapsibleTrigger asChild>
+				<button
+					type="button"
+					className="flex w-full items-start gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors hover:bg-surface-1/50"
+				>
+					<div className="mt-0.5 shrink-0">
+						<StatusIcon status={checkStatus} />
+					</div>
+					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+						<p className="text-sm font-medium">{title}</p>
+						<p className="text-xs text-muted-foreground">{description}</p>
+					</div>
+					<div className="mt-0.5 shrink-0 text-muted-foreground">
+						{open ? (
+							<ChevronUpIcon size={16} strokeWidth={2} />
+						) : (
+							<ChevronDownIcon size={16} strokeWidth={2} />
+						)}
+					</div>
+				</button>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				<div className="flex max-h-64 flex-col overflow-y-auto border-b border-border/50 bg-surface-1/50 py-1">
+					{sortedRuns.map((run) => {
+						const runStatus = getCheckRunStatus(run);
+						return (
+							<div
+								key={run.id}
+								className="flex items-center gap-2 px-4 py-1.5 pl-11"
+							>
+								<CheckRunIcon status={runStatus} />
+								{run.appAvatarUrl && (
+									<img
+										src={run.appAvatarUrl}
+										alt=""
+										className="size-4 shrink-0 rounded border border-border"
+									/>
+								)}
+								<span className="min-w-0 flex-1 truncate text-xs">
+									{run.name}
+								</span>
+								<span
+									className={cn(
+										"shrink-0 text-xs capitalize",
+										runStatus === "success" &&
+											"text-green-600 dark:text-green-400",
+										runStatus === "failure" && "text-red-600 dark:text-red-400",
+										runStatus === "pending" &&
+											"text-yellow-600 dark:text-yellow-400",
+										runStatus === "skipped" && "text-muted-foreground",
+									)}
+								>
+									{runStatus === "success"
+										? "Passed"
+										: runStatus === "failure"
+											? "Failed"
+											: runStatus === "pending"
+												? "Pending"
+												: "Skipped"}
+								</span>
+							</div>
+						);
+					})}
+				</div>
+			</CollapsibleContent>
+		</Collapsible>
+	);
+}
+
+// ── Branch status section ───────────────────────────────────────────
+
+function UpdateBranchButton({
+	owner,
+	repo,
+	pullNumber,
+}: {
+	owner: string;
+	repo: string;
+	pullNumber: number;
+}) {
+	const [isUpdating, setIsUpdating] = useState(false);
+	const queryClient = useQueryClient();
+
+	const handleUpdate = async () => {
+		setIsUpdating(true);
+		try {
+			const result = await updatePullBranch({
+				data: { owner, repo, pullNumber },
+			});
+			if (result.ok) {
+				await queryClient.invalidateQueries({ queryKey: ["github"] });
+			} else {
+				toast.error(result.error);
+				checkPermissionWarning(result, `${owner}/${repo}`);
+			}
+		} catch {
+			toast.error("Failed to update branch");
+		} finally {
+			setIsUpdating(false);
+		}
+	};
+
+	return (
+		<div className="flex overflow-hidden rounded-md">
+			<Button
+				variant="secondary"
+				size="xs"
+				disabled={isUpdating}
+				className="rounded-r-none"
+				onClick={() => {
+					void handleUpdate();
+				}}
+			>
+				{isUpdating ? "Updating…" : "Update branch"}
+			</Button>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="secondary"
+						size="xs"
+						disabled={isUpdating}
+						className="rounded-l-none border-l border-l-secondary-foreground/10 px-1"
+					>
+						<ChevronDownIcon size={12} strokeWidth={2} />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="w-72">
+					<DropdownMenuItem
+						onClick={() => {
+							void handleUpdate();
+						}}
+					>
+						<div className="flex flex-col gap-0.5">
+							<span className="flex items-center gap-1.5 font-medium">
+								<CheckIcon size={12} strokeWidth={2} />
+								Update with merge commit
+							</span>
+							<span className="pl-[18px] text-xs text-muted-foreground">
+								The merge commit will be associated with your account.
+							</span>
+						</div>
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={() => {
+							void handleUpdate();
+						}}
+					>
+						<div className="flex flex-col gap-0.5">
+							<span className="pl-[18px] font-medium">Update with rebase</span>
+							<span className="pl-[18px] text-xs text-muted-foreground">
+								This pull request will be rebased on top of the latest changes
+								and then force pushed.
+							</span>
+						</div>
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</div>
+	);
+}
+
+// ── Merge footer ────────────────────────────────────────────────────
+
+const MERGE_STRATEGIES = [
+	{ value: "merge" as const, label: "Create a merge commit" },
+	{ value: "squash" as const, label: "Squash and merge" },
+	{ value: "rebase" as const, label: "Rebase and merge" },
+];
+
+function MergeFooter({
+	isMergeBlocked,
+	owner,
+	repo,
+	pullNumber,
+}: {
+	isMergeBlocked: boolean;
+	owner: string;
+	repo: string;
+	pullNumber: number;
+}) {
+	const [mergeMethod, setMergeMethod] = useState<"merge" | "squash" | "rebase">(
+		"squash",
+	);
+	const [isMerging, setIsMerging] = useState(false);
+	const queryClient = useQueryClient();
+
+	const currentStrategy = MERGE_STRATEGIES.find(
+		(s) => s.value === mergeMethod,
+	)!;
+
+	const handleMerge = async () => {
+		setIsMerging(true);
+		try {
+			const result = await mergePullRequest({
+				data: { owner, repo, pullNumber, mergeMethod },
+			});
+			if (result.ok) {
+				await queryClient.invalidateQueries({ queryKey: ["github"] });
+			} else {
+				toast.error(result.error);
+				checkPermissionWarning(result, `${owner}/${repo}`);
+			}
+		} catch {
+			toast.error("Failed to merge pull request");
+		} finally {
+			setIsMerging(false);
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-3 px-4 py-3">
+			<div className="flex items-center gap-2">
+				<div className="flex overflow-hidden rounded-md">
+					<Button
+						size="sm"
+						disabled={isMergeBlocked || isMerging}
+						onClick={() => {
+							void handleMerge();
+						}}
+						className="rounded-r-none"
+						iconLeft={<GitMergeIcon size={14} strokeWidth={2} />}
+					>
+						{isMerging ? "Merging…" : currentStrategy.label}
+					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								size="sm"
+								disabled={isMergeBlocked || isMerging}
+								className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
+							>
+								<ChevronDownIcon size={14} strokeWidth={2} />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							{MERGE_STRATEGIES.map((strategy) => (
+								<DropdownMenuItem
+									key={strategy.value}
+									onClick={() => setMergeMethod(strategy.value)}
+								>
+									<span className="flex items-center gap-2">
+										{strategy.value === mergeMethod && (
+											<CheckIcon size={14} strokeWidth={2} />
+										)}
+										<span
+											className={cn(strategy.value !== mergeMethod && "pl-5")}
+										>
+											{strategy.label}
+										</span>
+									</span>
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			</div>
+			{isMergeBlocked && (
+				<p className="text-xs text-muted-foreground">
+					Merging is blocked — all required conditions have not been met.
+				</p>
+			)}
+		</div>
+	);
+}
+
+// ── Shared UI primitives ────────────────────────────────────────────
 
 function StatusRow({
 	icon,
 	title,
 	description,
 	action,
-	isLast,
 }: {
 	icon: React.ReactNode;
 	title: string;
 	description: string;
 	action?: React.ReactNode;
-	isLast?: boolean;
 }) {
 	return (
-		<div
-			className={cn(
-				"flex items-start gap-3 px-4 py-3",
-				!isLast && "border-b border-border/50",
-			)}
-		>
+		<div className="flex items-start gap-3 border-b border-border/50 px-4 py-3">
 			<div className="mt-0.5 shrink-0">{icon}</div>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<p className="text-sm font-medium">{title}</p>
@@ -263,12 +766,91 @@ function StatusRow({
 	);
 }
 
-function StatusDot({ color }: { color: string }) {
+type StatusType = "success" | "error" | "pending";
+
+function StatusIcon({ status }: { status: StatusType }) {
+	if (status === "success") {
+		return (
+			<div className="flex size-4 items-center justify-center rounded-full bg-green-600 text-white dark:bg-green-500">
+				<CheckIcon size={10} strokeWidth={3} />
+			</div>
+		);
+	}
+	if (status === "error") {
+		return (
+			<div className="flex size-4 items-center justify-center rounded-full bg-red-600 text-white dark:bg-red-500">
+				<XIcon size={10} strokeWidth={3} />
+			</div>
+		);
+	}
 	return (
-		<div className={cn("flex size-4 items-center justify-center", color)}>
-			<div className="size-2 rounded-full bg-current" />
+		<div className="flex size-4 items-center justify-center rounded-full border-2 border-yellow-500 text-yellow-500">
+			<div className="size-1.5 rounded-full bg-current" />
 		</div>
 	);
+}
+
+function CheckRunIcon({
+	status,
+}: {
+	status: "success" | "failure" | "pending" | "skipped";
+}) {
+	if (status === "success") {
+		return (
+			<div className="flex size-3.5 shrink-0 items-center justify-center text-green-600 dark:text-green-400">
+				<CheckIcon size={12} strokeWidth={3} />
+			</div>
+		);
+	}
+	if (status === "failure") {
+		return (
+			<div className="flex size-3.5 shrink-0 items-center justify-center text-red-600 dark:text-red-400">
+				<XIcon size={12} strokeWidth={3} />
+			</div>
+		);
+	}
+	if (status === "skipped") {
+		return (
+			<div className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
+				<div className="size-1.5 rounded-full border border-current" />
+			</div>
+		);
+	}
+	return (
+		<div className="flex size-3.5 shrink-0 items-center justify-center text-yellow-500">
+			<svg
+				className="size-3.5 animate-spin"
+				viewBox="0 0 16 16"
+				fill="none"
+				aria-hidden="true"
+			>
+				<circle
+					cx="8"
+					cy="8"
+					r="6"
+					stroke="currentColor"
+					strokeWidth="2"
+					opacity="0.25"
+				/>
+				<path
+					d="M14 8a6 6 0 0 0-6-6"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+				/>
+			</svg>
+		</div>
+	);
+}
+
+function getCheckRunStatus(
+	run: PullCheckRun,
+): "success" | "failure" | "pending" | "skipped" {
+	if (run.status !== "completed") return "pending";
+	if (run.conclusion === "success" || run.conclusion === "neutral")
+		return "success";
+	if (run.conclusion === "skipped") return "skipped";
+	return "failure";
 }
 
 function MergeStatusSkeleton() {
@@ -290,51 +872,6 @@ function MergeStatusSkeleton() {
 				</div>
 			))}
 		</div>
-	);
-}
-
-function UpdateBranchButton({
-	owner,
-	repo,
-	pullNumber,
-	isUpdating,
-	setIsUpdating,
-}: {
-	owner: string;
-	repo: string;
-	pullNumber: number;
-	isUpdating: boolean;
-	setIsUpdating: (value: boolean) => void;
-}) {
-	const queryClient = useQueryClient();
-
-	const handleUpdate = async () => {
-		setIsUpdating(true);
-		try {
-			const success = await updatePullBranch({
-				data: { owner, repo, pullNumber },
-			});
-			if (success) {
-				await queryClient.invalidateQueries({
-					queryKey: ["github"],
-				});
-			}
-		} finally {
-			setIsUpdating(false);
-		}
-	};
-
-	return (
-		<button
-			type="button"
-			disabled={isUpdating}
-			onClick={() => {
-				void handleUpdate();
-			}}
-			className="rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground disabled:opacity-50"
-		>
-			{isUpdating ? "Updating…" : "Update branch"}
-		</button>
 	);
 }
 
