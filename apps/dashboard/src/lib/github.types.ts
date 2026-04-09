@@ -152,9 +152,17 @@ export type PullStatus = {
 	canUpdateBranch: boolean;
 };
 
+export type PullCommit = {
+	sha: string;
+	message: string;
+	createdAt: string;
+	author: GitHubActor | null;
+};
+
 export type PullPageData = {
 	detail: PullDetail | null;
 	comments: PullComment[];
+	commits: PullCommit[];
 };
 
 export type PullFile = {
