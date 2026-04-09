@@ -383,6 +383,8 @@ function mapPullDetail(
 		headSha: pull.head.sha,
 		baseRefName: pull.base.ref,
 		isMerged: pull.merged,
+		mergeCommitSha: pull.merge_commit_sha ?? null,
+		mergedBy: pull.merged_by ? mapActor(pull.merged_by) : null,
 		mergeable: pull.mergeable,
 		mergeableState:
 			typeof pull.mergeable_state === "string" ? pull.mergeable_state : null,
@@ -780,7 +782,7 @@ async function computePullStatus(
 	data: PullFromRepoInput,
 	pull: RepoPullDetail,
 ): Promise<PullStatus> {
-	const [reviewsResponse, checksResponse] = await Promise.all([
+	const [reviewsResponse, checksResponse, repoResponse] = await Promise.all([
 		context.octokit.rest.pulls.listReviews({
 			owner: data.owner,
 			repo: data.repo,
@@ -794,6 +796,9 @@ async function computePullStatus(
 				ref: pull.head.sha,
 				per_page: 100,
 			})
+			.catch(() => null),
+		context.octokit.rest.repos
+			.get({ owner: data.owner, repo: data.repo })
 			.catch(() => null),
 	]);
 
@@ -846,9 +851,11 @@ async function computePullStatus(
 		behindBy = null;
 	}
 
-	const permissions = pull.base.repo.permissions;
+	const permissions =
+		repoResponse?.data.permissions ?? pull.base.repo.permissions;
 	const canUpdateBranch =
 		!permissions || permissions.push === true || permissions.admin === true;
+	const canBypassProtections = permissions?.admin === true;
 
 	return {
 		reviews: Array.from(latestReviews.values()),
@@ -872,6 +879,7 @@ async function computePullStatus(
 		behindBy,
 		baseRefName: pull.base.ref,
 		canUpdateBranch,
+		canBypassProtections,
 	};
 }
 
@@ -1598,6 +1606,7 @@ export const updatePullBranch = createServerFn({ method: "POST" })
 
 export type MergePullInput = PullFromRepoInput & {
 	mergeMethod: "merge" | "squash" | "rebase";
+	bypassProtections?: boolean;
 };
 
 export const mergePullRequest = createServerFn({ method: "POST" })

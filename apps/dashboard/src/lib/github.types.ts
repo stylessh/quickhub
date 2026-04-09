@@ -65,6 +65,8 @@ export type PullDetail = PullSummary & {
 	headSha: string;
 	baseRefName: string;
 	isMerged: boolean;
+	mergeCommitSha: string | null;
+	mergedBy: GitHubActor | null;
 	mergeable: boolean | null;
 	mergeableState?: string | null;
 	requestedReviewers: GitHubActor[];
@@ -159,6 +161,7 @@ export type PullStatus = {
 	behindBy: number | null;
 	baseRefName: string;
 	canUpdateBranch: boolean;
+	canBypassProtections: boolean;
 };
 
 export type PullCommit = {

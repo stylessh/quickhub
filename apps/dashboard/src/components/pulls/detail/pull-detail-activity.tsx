@@ -8,6 +8,7 @@ import {
 	XIcon,
 } from "@diffkit/icons";
 import { Button } from "@diffkit/ui/components/button";
+import { Checkbox } from "@diffkit/ui/components/checkbox";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -103,7 +104,11 @@ export function PullDetailActivitySection({
 				<p className="py-4 text-sm text-muted-foreground">No activity yet.</p>
 			)}
 
-			<ActivityTimeline comments={comments ?? []} commits={commits ?? []} />
+			<ActivityTimeline
+				comments={comments ?? []}
+				commits={commits ?? []}
+				pr={pr}
+			/>
 
 			{!pr.isMerged && pr.state !== "closed" && (
 				<div className="mt-6">
@@ -147,6 +152,7 @@ function MergeStatusCard({
 		behindBy,
 		baseRefName,
 		canUpdateBranch,
+		canBypassProtections,
 	} = status;
 
 	const approvedReviews = reviews.filter((r) => r.state === "APPROVED");
@@ -211,21 +217,13 @@ function MergeStatusCard({
 					icon={<StatusIcon status="success" />}
 					title="No conflicts with base branch"
 					description="Merging can be performed automatically."
-					action={
-						canUpdateBranch ? (
-							<UpdateBranchButton
-								owner={owner}
-								repo={repo}
-								pullNumber={pullNumber}
-							/>
-						) : undefined
-					}
 				/>
 			)}
 
 			{/* Merge action footer */}
 			<MergeFooter
 				isMergeBlocked={isMergeBlocked}
+				canBypassProtections={canBypassProtections}
 				owner={owner}
 				repo={repo}
 				pullNumber={pullNumber}
@@ -387,7 +385,7 @@ function ReviewsSection({
 															owner,
 															repo,
 															pullNumber,
-															reviewers: [review.author!.login],
+															reviewers: [review.author?.login ?? ""],
 														},
 													})
 														.then((result) => {
@@ -570,10 +568,10 @@ function UpdateBranchButton({
 			} else {
 				toast.error(result.error);
 				checkPermissionWarning(result, `${owner}/${repo}`);
+				setIsUpdating(false);
 			}
 		} catch {
 			toast.error("Failed to update branch");
-		} finally {
 			setIsUpdating(false);
 		}
 	};
@@ -647,11 +645,13 @@ const MERGE_STRATEGIES = [
 
 function MergeFooter({
 	isMergeBlocked,
+	canBypassProtections,
 	owner,
 	repo,
 	pullNumber,
 }: {
 	isMergeBlocked: boolean;
+	canBypassProtections: boolean;
 	owner: string;
 	repo: string;
 	pullNumber: number;
@@ -660,11 +660,12 @@ function MergeFooter({
 		"squash",
 	);
 	const [isMerging, setIsMerging] = useState(false);
+	const [bypassChecks, setBypassChecks] = useState(false);
 	const queryClient = useQueryClient();
 
-	const currentStrategy = MERGE_STRATEGIES.find(
-		(s) => s.value === mergeMethod,
-	)!;
+	const currentStrategy =
+		MERGE_STRATEGIES.find((s) => s.value === mergeMethod) ??
+		MERGE_STRATEGIES[0];
 
 	const handleMerge = async () => {
 		setIsMerging(true);
@@ -677,65 +678,82 @@ function MergeFooter({
 			} else {
 				toast.error(result.error);
 				checkPermissionWarning(result, `${owner}/${repo}`);
+				setIsMerging(false);
 			}
 		} catch {
 			toast.error("Failed to merge pull request");
-		} finally {
 			setIsMerging(false);
 		}
 	};
 
+	const isDisabled = (isMergeBlocked && !bypassChecks) || isMerging;
+
 	return (
-		<div className="flex items-center gap-3 px-4 py-3">
-			<div className="flex items-center gap-2">
-				<div className="flex overflow-hidden rounded-md">
-					<Button
-						size="sm"
-						disabled={isMergeBlocked || isMerging}
-						onClick={() => {
-							void handleMerge();
-						}}
-						className="rounded-r-none"
-						iconLeft={<GitMergeIcon size={14} strokeWidth={2} />}
-					>
-						{isMerging ? "Merging…" : currentStrategy.label}
-					</Button>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								size="sm"
-								disabled={isMergeBlocked || isMerging}
-								className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
-							>
-								<ChevronDownIcon size={14} strokeWidth={2} />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							{MERGE_STRATEGIES.map((strategy) => (
-								<DropdownMenuItem
-									key={strategy.value}
-									onClick={() => setMergeMethod(strategy.value)}
+		<div className="flex flex-col gap-3 px-4 py-3">
+			<div className="flex items-center gap-3">
+				<div className="flex items-center gap-2">
+					<div className="flex overflow-hidden rounded-md">
+						<Button
+							size="sm"
+							disabled={isDisabled}
+							onClick={() => {
+								void handleMerge();
+							}}
+							className="rounded-r-none"
+							iconLeft={<GitMergeIcon size={14} strokeWidth={2} />}
+						>
+							{isMerging ? "Merging…" : currentStrategy.label}
+						</Button>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									size="sm"
+									disabled={isDisabled}
+									className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
 								>
-									<span className="flex items-center gap-2">
-										{strategy.value === mergeMethod && (
-											<CheckIcon size={14} strokeWidth={2} />
-										)}
-										<span
-											className={cn(strategy.value !== mergeMethod && "pl-5")}
-										>
-											{strategy.label}
+									<ChevronDownIcon size={14} strokeWidth={2} />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								{MERGE_STRATEGIES.map((strategy) => (
+									<DropdownMenuItem
+										key={strategy.value}
+										onClick={() => setMergeMethod(strategy.value)}
+									>
+										<span className="flex items-center gap-2">
+											{strategy.value === mergeMethod && (
+												<CheckIcon size={14} strokeWidth={2} />
+											)}
+											<span
+												className={cn(strategy.value !== mergeMethod && "pl-5")}
+											>
+												{strategy.label}
+											</span>
 										</span>
-									</span>
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
+									</DropdownMenuItem>
+								))}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
 				</div>
+				{isMergeBlocked && !bypassChecks && (
+					<p className="text-xs text-muted-foreground">
+						Merging is blocked — all required conditions have not been met.
+					</p>
+				)}
 			</div>
-			{isMergeBlocked && (
-				<p className="text-xs text-muted-foreground">
-					Merging is blocked — all required conditions have not been met.
-				</p>
+			{isMergeBlocked && canBypassProtections && (
+				<div className="flex items-center gap-2 text-xs text-yellow-600 dark:text-yellow-500">
+					<Checkbox
+						id="bypass-checks"
+						checked={bypassChecks}
+						onCheckedChange={(checked) => setBypassChecks(checked === true)}
+					/>
+					<label htmlFor="bypass-checks">
+						Merge without waiting for requirements to be met (bypass branch
+						protections)
+					</label>
+				</div>
 			)}
 		</div>
 	);
@@ -882,9 +900,11 @@ type TimelineItem =
 function ActivityTimeline({
 	comments,
 	commits,
+	pr,
 }: {
 	comments: PullComment[];
 	commits: PullCommit[];
+	pr: PullDetail;
 }) {
 	const items: TimelineItem[] = [
 		...comments.map((comment) => ({
@@ -899,7 +919,7 @@ function ActivityTimeline({
 		})),
 	].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-	if (items.length === 0) return null;
+	if (items.length === 0 && !pr.isMerged) return null;
 
 	return (
 		<div className="relative flex flex-col pl-8 before:absolute before:left-4 before:top-0 before:h-full before:w-px before:bg-[linear-gradient(to_bottom,var(--color-border)_80%,transparent)]">
@@ -980,6 +1000,40 @@ function ActivityTimeline({
 					</div>
 				);
 			})}
+			{pr.isMerged && pr.mergedAt && (
+				<div className="flex items-center gap-1.5 pt-5 pb-5">
+					<div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
+						<GitMergeIcon size={12} strokeWidth={2} />
+					</div>
+					{pr.mergedBy ? (
+						<img
+							src={pr.mergedBy.avatarUrl}
+							alt={pr.mergedBy.login}
+							className="size-5 shrink-0 rounded-full border border-border"
+						/>
+					) : (
+						<div className="size-5 shrink-0 rounded-full bg-surface-2" />
+					)}
+					<span className="text-sm">
+						<span className="font-medium">
+							{pr.mergedBy?.login ?? "Unknown"}
+						</span>
+						{" merged commit "}
+						{pr.mergeCommitSha && (
+							<code className="rounded bg-surface-1 px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
+								{pr.mergeCommitSha.slice(0, 7)}
+							</code>
+						)}
+						{" into "}
+						<code className="rounded bg-surface-1 px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
+							{pr.baseRefName}
+						</code>
+					</span>
+					<span className="ml-auto shrink-0 text-xs text-muted-foreground">
+						{formatRelativeTime(pr.mergedAt)}
+					</span>
+				</div>
+			)}
 		</div>
 	);
 }
