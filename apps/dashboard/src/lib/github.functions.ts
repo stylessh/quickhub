@@ -11,6 +11,7 @@ import type {
 	MyIssuesResult,
 	MyPullsResult,
 	PullComment,
+	PullCommit,
 	PullDetail,
 	PullFile,
 	PullPageData,
@@ -631,6 +632,44 @@ async function getPullCommentsResult(
 	});
 }
 
+async function getPullCommitsResult(
+	context: GitHubContext,
+	data: PullFromRepoInput,
+): Promise<PullCommit[]> {
+	type PullCommitResponse = Awaited<
+		ReturnType<GitHubClient["rest"]["pulls"]["listCommits"]>
+	>["data"][number];
+
+	return getCachedGitHubRequest<PullCommitResponse[], PullCommit[]>({
+		context,
+		resource: "pulls.commits",
+		params: data,
+		freshForMs: githubCachePolicy.activity.staleTimeMs,
+		request: (headers) =>
+			context.octokit.rest.pulls.listCommits({
+				owner: data.owner,
+				repo: data.repo,
+				pull_number: data.pullNumber,
+				per_page: 100,
+				headers,
+			}),
+		mapData: (commits) =>
+			commits.map((c) => ({
+				sha: c.sha,
+				message: c.commit.message,
+				createdAt: c.commit.author?.date ?? c.commit.committer?.date ?? "",
+				author: c.author
+					? {
+							login: c.author.login,
+							avatarUrl: c.author.avatar_url,
+							url: c.author.html_url,
+							type: c.author.type ?? "User",
+						}
+					: null,
+			})),
+	});
+}
+
 async function computePullStatus(
 	context: GitHubContext,
 	data: PullFromRepoInput,
@@ -764,11 +803,15 @@ async function getPullPageDataResult(
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
 	});
 
-	const comments = await getPullCommentsResult(context, data);
+	const [comments, commits] = await Promise.all([
+		getPullCommentsResult(context, data),
+		getPullCommitsResult(context, data),
+	]);
 
 	return {
 		detail: mapPullDetail(pull, buildRepositoryRef(data.owner, data.repo)),
 		comments,
+		commits,
 	};
 }
 

@@ -28,7 +28,13 @@ import {
 	githubPullPageQueryOptions,
 	githubPullStatusQueryOptions,
 } from "#/lib/github.query";
-import type { GitHubActor, PullDetail, PullStatus } from "#/lib/github.types";
+import type {
+	GitHubActor,
+	PullComment,
+	PullCommit,
+	PullDetail,
+	PullStatus,
+} from "#/lib/github.types";
 import { githubCachePolicy } from "#/lib/github-cache-policy";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { useRegisterTab } from "#/lib/use-register-tab";
@@ -110,6 +116,7 @@ function PullDetailPage() {
 
 	const pr = pageQuery.data?.detail;
 	const comments = pageQuery.data?.comments;
+	const commits = pageQuery.data?.commits;
 	const status = statusQuery.data ?? null;
 
 	useRegisterTab(
@@ -241,13 +248,13 @@ function PullDetailPage() {
 						</div>
 					)}
 
-					{/* Activity / Comments */}
+					{/* Activity */}
 					<div className="flex flex-col">
 						<div className="flex items-center justify-between gap-2 rounded-lg bg-surface-1 px-4 py-2.5">
 							<h2 className="text-xs font-medium">Activity</h2>
-							{comments && (
+							{comments && commits && (
 								<span className="text-xs tabular-nums text-muted-foreground">
-									{comments.length}
+									{comments.length + commits.length}
 								</span>
 							)}
 						</div>
@@ -278,46 +285,19 @@ function PullDetailPage() {
 							</div>
 						)}
 
-						{comments && comments.length === 0 && (
-							<p className="py-4 text-sm text-muted-foreground">
-								No comments yet.
-							</p>
-						)}
+						{comments &&
+							commits &&
+							comments.length === 0 &&
+							commits.length === 0 && (
+								<p className="py-4 text-sm text-muted-foreground">
+									No activity yet.
+								</p>
+							)}
 
-						{comments && comments.length > 0 && (
-							<div className="relative flex flex-col pl-8 before:absolute before:left-4 before:top-0 before:h-full before:w-px before:bg-[linear-gradient(to_bottom,var(--color-border)_80%,transparent)]">
-								{comments.map((comment, i) => (
-									<div
-										key={comment.id}
-										className={cn(
-											"flex flex-col gap-1 py-4",
-											i === 0 && "pt-5",
-										)}
-									>
-										<div className="flex items-center gap-1.5">
-											{comment.author ? (
-												<img
-													src={comment.author.avatarUrl}
-													alt={comment.author.login}
-													className="size-4 rounded-full border border-border"
-												/>
-											) : (
-												<div className="size-4 rounded-full bg-surface-2" />
-											)}
-											<span className="text-xs font-medium">
-												{comment.author?.login ?? "Unknown"}
-											</span>
-											<span className="text-xs text-muted-foreground">
-												{formatRelativeTime(comment.createdAt)}
-											</span>
-										</div>
-										<Markdown className="text-muted-foreground">
-											{comment.body}
-										</Markdown>
-									</div>
-								))}
-							</div>
-						)}
+						<ActivityTimeline
+							comments={comments ?? []}
+							commits={commits ?? []}
+						/>
 
 						{/* Status card */}
 						{!pr.isMerged && pr.state !== "closed" && (
@@ -384,7 +364,11 @@ function PullDetailPage() {
 
 					{/* Participants */}
 					<SidebarSection title="Participants">
-						<ParticipantsList pr={pr} comments={comments ?? []} />
+						<ParticipantsList
+							pr={pr}
+							comments={comments ?? []}
+							commits={commits ?? []}
+						/>
 					</SidebarSection>
 
 					{/* Details */}
@@ -473,9 +457,11 @@ function DetailRow({
 function ParticipantsList({
 	pr,
 	comments,
+	commits,
 }: {
 	pr: PullDetail;
 	comments: Array<{ author: GitHubActor | null }>;
+	commits: Array<{ author: GitHubActor | null }>;
 }) {
 	const seen = new Set<string>();
 	const participants: GitHubActor[] = [];
@@ -490,6 +476,9 @@ function ParticipantsList({
 	addActor(pr.author);
 	for (const comment of comments) {
 		addActor(comment.author);
+	}
+	for (const commit of commits) {
+		addActor(commit.author);
 	}
 
 	if (participants.length === 0) {
@@ -888,6 +877,114 @@ function UpdateBranchButton({
 		>
 			{isUpdating ? "Updating…" : "Update branch"}
 		</button>
+	);
+}
+
+type TimelineItem =
+	| { type: "comment"; date: string; data: PullComment }
+	| { type: "commit"; date: string; data: PullCommit };
+
+function ActivityTimeline({
+	comments,
+	commits,
+}: {
+	comments: PullComment[];
+	commits: PullCommit[];
+}) {
+	const items: TimelineItem[] = [
+		...comments.map((c) => ({
+			type: "comment" as const,
+			date: c.createdAt,
+			data: c,
+		})),
+		...commits.map((c) => ({
+			type: "commit" as const,
+			date: c.createdAt,
+			data: c,
+		})),
+	].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+	if (items.length === 0) return null;
+
+	return (
+		<div className="relative flex flex-col pl-8 before:absolute before:left-4 before:top-0 before:h-full before:w-px before:bg-[linear-gradient(to_bottom,var(--color-border)_80%,transparent)]">
+			{items.map((item, i) => {
+				const prevType = i > 0 ? items[i - 1].type : null;
+				const nextType = i < items.length - 1 ? items[i + 1].type : null;
+				const isConsecutiveCommit =
+					item.type === "commit" && prevType === "commit";
+				const isLastInCommitRun =
+					item.type === "commit" && nextType !== "commit";
+
+				if (item.type === "comment") {
+					const comment = item.data;
+					return (
+						<div
+							key={`comment-${comment.id}`}
+							className={cn("flex flex-col gap-1 py-5", i === 0 && "pt-5")}
+						>
+							<div className="flex items-center gap-1.5">
+								{comment.author ? (
+									<img
+										src={comment.author.avatarUrl}
+										alt={comment.author.login}
+										className="size-4 rounded-full border border-border"
+									/>
+								) : (
+									<div className="size-4 rounded-full bg-surface-2" />
+								)}
+								<span className="text-xs font-medium">
+									{comment.author?.login ?? "Unknown"}
+								</span>
+								<span className="text-xs text-muted-foreground">
+									{formatRelativeTime(comment.createdAt)}
+								</span>
+							</div>
+							<Markdown className="text-muted-foreground">
+								{comment.body}
+							</Markdown>
+						</div>
+					);
+				}
+
+				const commit = item.data;
+				const firstLine = commit.message.split("\n")[0];
+				return (
+					<div
+						key={`commit-${commit.sha}`}
+						className={cn(
+							"flex items-center gap-1.5",
+							i === 0 ? "pt-5" : isConsecutiveCommit ? "pt-2" : "pt-5",
+							isLastInCommitRun ? "pb-5" : "pb-2",
+						)}
+					>
+						<div className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-surface-1">
+							<GitCommitIcon
+								size={12}
+								strokeWidth={2}
+								className="text-muted-foreground"
+							/>
+						</div>
+						{commit.author ? (
+							<img
+								src={commit.author.avatarUrl}
+								alt={commit.author.login}
+								className="size-5 shrink-0 rounded-full border border-border"
+							/>
+						) : (
+							<div className="size-5 shrink-0 rounded-full bg-surface-2" />
+						)}
+						<span className="min-w-0 truncate text-sm">{firstLine}</span>
+						<code className="ml-auto shrink-0 rounded bg-surface-1 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+							{commit.sha.slice(0, 7)}
+						</code>
+						<span className="shrink-0 text-xs text-muted-foreground">
+							{formatRelativeTime(commit.createdAt)}
+						</span>
+					</div>
+				);
+			})}
+		</div>
 	);
 }
 
