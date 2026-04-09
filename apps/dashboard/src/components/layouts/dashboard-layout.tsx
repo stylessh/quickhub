@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
-import { CommandPalette } from "#/components/command-palette";
+import { CommandPalette } from "#/components/navigation/command-palette";
 import {
 	githubMyIssuesQueryOptions,
 	githubMyPullsQueryOptions,

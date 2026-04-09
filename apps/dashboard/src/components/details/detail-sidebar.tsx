@@ -1,0 +1,83 @@
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@diffkit/ui/components/tooltip";
+
+type DetailRowIcon = React.ComponentType<{
+	size?: number;
+	strokeWidth?: number;
+	className?: string;
+}>;
+
+export function DetailSidebar({ children }: { children: React.ReactNode }) {
+	return (
+		<aside className="flex h-fit flex-col gap-6 xl:sticky xl:top-10">
+			{children}
+		</aside>
+	);
+}
+
+export function DetailSidebarSection({
+	title,
+	children,
+}: {
+	title: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="flex flex-col gap-2.5">
+			<h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+				{title}
+			</h3>
+			{children}
+		</div>
+	);
+}
+
+export function DetailSidebarRow({
+	icon: Icon,
+	label,
+	children,
+}: {
+	icon?: DetailRowIcon;
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="flex items-center justify-between gap-4">
+			<span className="flex items-center gap-1.5 text-muted-foreground">
+				{Icon ? <Icon size={13} strokeWidth={2} /> : null}
+				{label}
+			</span>
+			<span className="text-foreground">{children}</span>
+		</div>
+	);
+}
+
+export function DetailParticipantAvatars({
+	actors,
+}: {
+	actors: Array<{
+		login: string;
+		avatarUrl: string;
+	}>;
+}) {
+	return (
+		<div className="group/participants flex items-center">
+			{actors.map((actor, index) => (
+				<Tooltip key={actor.login}>
+					<TooltipTrigger asChild>
+						<img
+							src={actor.avatarUrl}
+							alt={actor.login}
+							className="size-6 rounded-full border-2 border-card transition-[margin] duration-200 group-hover/participants:ml-0"
+							style={index > 0 ? { marginLeft: -6 } : undefined}
+						/>
+					</TooltipTrigger>
+					<TooltipContent>{actor.login}</TooltipContent>
+				</Tooltip>
+			))}
+		</div>
+	);
+}

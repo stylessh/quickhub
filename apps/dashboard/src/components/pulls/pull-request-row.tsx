@@ -12,27 +12,13 @@ import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import { formatRelativeTime } from "#/lib/format-relative-time";
 import {
 	type GitHubQueryScope,
 	githubPullCommentsQueryOptions,
 } from "#/lib/github.query";
 import type { PullSummary } from "#/lib/github.types";
 import { preloadRouteOnce } from "#/lib/route-preload";
-
-export function formatRelativeTime(dateStr: string): string {
-	const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-	if (seconds < 60) return "just now";
-	const minutes = Math.floor(seconds / 60);
-	if (minutes < 60) return `${minutes}m ago`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	if (days < 30) return `${days}d ago`;
-	const months = Math.floor(days / 30);
-	if (months < 12) return `${months}mo ago`;
-	const years = Math.floor(months / 12);
-	return `${years}y ago`;
-}
 
 function getPrStateProps(pr: PullSummary) {
 	if (pr.isDraft) {

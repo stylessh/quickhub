@@ -1,7 +1,7 @@
 import { CommentIcon, IssuesIcon } from "@diffkit/icons";
 import { cn } from "@diffkit/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { formatRelativeTime } from "#/components/pulls/pull-request-row";
+import { formatRelativeTime } from "#/lib/format-relative-time";
 import type { IssueSummary } from "#/lib/github.types";
 
 function getIssueStateProps(issue: IssueSummary) {

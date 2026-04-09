@@ -10,10 +10,10 @@ import {
 } from "@diffkit/ui/components/command";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useRouter } from "@tanstack/react-router";
-import { formatRelativeTime } from "#/components/pulls/pull-request-row";
 import type { CommandItem, CommandItemMeta } from "#/lib/command-palette/types";
 import { useCommandItems } from "#/lib/command-palette/use-command-items";
 import { useCommandPalette } from "#/lib/command-palette/use-command-palette";
+import { formatRelativeTime } from "#/lib/format-relative-time";
 
 export function CommandPalette() {
 	const { open, setOpen, close } = useCommandPalette();
