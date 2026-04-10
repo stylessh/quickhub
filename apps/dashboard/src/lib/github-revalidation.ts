@@ -3,6 +3,11 @@ import type { Tab } from "./tab-store";
 export const githubRevalidationSignalKeys = {
 	pullsMine: "pulls.mine",
 	issuesMine: "issues.mine",
+	repoLabels: (input: { owner: string; repo: string }) =>
+		`repoLabels:${input.owner}/${input.repo}`,
+	repoCollaborators: (input: { owner: string; repo: string }) =>
+		`repoCollaborators:${input.owner}/${input.repo}`,
+	orgTeams: (input: { org: string }) => `orgTeams:${input.org}`,
 	actionsRepo: (input: { owner: string; repo: string }) =>
 		`actions:${input.owner}/${input.repo}`,
 	pullEntity: (input: { owner: string; repo: string; pullNumber: number }) =>

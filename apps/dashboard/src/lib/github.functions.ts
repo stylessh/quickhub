@@ -39,6 +39,7 @@ import {
 } from "./github-access";
 import { getGitHubAppSlug } from "./github-app.server";
 import {
+	bumpGitHubCacheNamespaces,
 	bustGitHubCache,
 	createGitHubResponseMetadata,
 	type GitHubConditionalHeaders,
@@ -637,6 +638,8 @@ async function getCachedGitHubRequest<TGitHubData, TResult>({
 	params,
 	freshForMs,
 	signalKeys,
+	namespaceKeys,
+	cacheMode,
 	request,
 	mapData,
 }: {
@@ -645,6 +648,8 @@ async function getCachedGitHubRequest<TGitHubData, TResult>({
 	params: unknown;
 	freshForMs: number;
 	signalKeys?: string[];
+	namespaceKeys?: string[];
+	cacheMode?: "legacy" | "split";
 	request: (
 		headers: Record<string, string>,
 	) => Promise<GitHubRestResponse<TGitHubData>>;
@@ -656,6 +661,8 @@ async function getCachedGitHubRequest<TGitHubData, TResult>({
 		params,
 		freshForMs,
 		signalKeys,
+		namespaceKeys,
+		cacheMode,
 		fetcher: async (conditionals) => {
 			const result = await executeGitHubRequest(request, conditionals);
 
@@ -677,6 +684,8 @@ async function getCachedPaginatedGitHubRequest<TGitHubItem, TResult>({
 	params,
 	freshForMs,
 	signalKeys,
+	namespaceKeys,
+	cacheMode,
 	request,
 	mapData,
 	pageSize = 100,
@@ -686,6 +695,8 @@ async function getCachedPaginatedGitHubRequest<TGitHubItem, TResult>({
 	params: unknown;
 	freshForMs: number;
 	signalKeys?: string[];
+	namespaceKeys?: string[];
+	cacheMode?: "legacy" | "split";
 	request: (page: number) => Promise<GitHubRestResponse<TGitHubItem[]>>;
 	mapData: (items: TGitHubItem[]) => TResult;
 	pageSize?: number;
@@ -696,6 +707,8 @@ async function getCachedPaginatedGitHubRequest<TGitHubItem, TResult>({
 		params,
 		freshForMs,
 		signalKeys,
+		namespaceKeys,
+		cacheMode,
 		fetcher: async () => {
 			const items: TGitHubItem[] = [];
 			let page = 1;
@@ -738,18 +751,20 @@ async function getCachedPullResponse({
 	resource: string;
 	freshForMs: number;
 }) {
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
+
 	return getCachedGitHubRequest<RepoPullDetail, RepoPullDetail>({
 		context,
 		resource,
 		params: data,
 		freshForMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.pulls.get({
 				owner: data.owner,
@@ -782,19 +797,20 @@ async function getPullCommentsResult(
 	type IssueComment = Awaited<
 		ReturnType<GitHubClient["rest"]["issues"]["listComments"]>
 	>["data"][number];
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
 
 	return getCachedGitHubRequest<IssueComment[], PullComment[]>({
 		context,
 		resource: "pulls.comments",
 		params: data,
 		freshForMs: githubCachePolicy.activity.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.issues.listComments({
 				owner: data.owner,
@@ -827,19 +843,20 @@ async function getPullCommitsResult(
 	type PullCommitResponse = Awaited<
 		ReturnType<GitHubClient["rest"]["pulls"]["listCommits"]>
 	>["data"][number];
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
 
 	return getCachedGitHubRequest<PullCommitResponse[], PullCommit[]>({
 		context,
 		resource: "pulls.commits",
 		params: data,
 		freshForMs: githubCachePolicy.activity.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.pulls.listCommits({
 				owner: data.owner,
@@ -978,18 +995,20 @@ async function getPullStatusResult(
 	data: PullFromRepoInput,
 	pull?: RepoPullDetail,
 ): Promise<PullStatus> {
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
+
 	return getOrRevalidateGitHubResource<PullStatus>({
 		userId: context.session.user.id,
 		resource: "pulls.status.v1",
 		params: data,
 		freshForMs: githubCachePolicy.status.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		fetcher: async () => {
 			const pullForStatus =
 				pull ??
@@ -1036,18 +1055,20 @@ async function getIssueDetailResult(
 	context: GitHubContext,
 	data: IssueFromRepoInput,
 ): Promise<IssueDetail | null> {
+	const issueNamespaceKey = githubRevalidationSignalKeys.issueEntity({
+		owner: data.owner,
+		repo: data.repo,
+		issueNumber: data.issueNumber,
+	});
+
 	return getCachedGitHubRequest<RepoIssueDetail, IssueDetail | null>({
 		context,
 		resource: "issues.detail",
 		params: data,
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.issueEntity({
-				owner: data.owner,
-				repo: data.repo,
-				issueNumber: data.issueNumber,
-			}),
-		],
+		signalKeys: [issueNamespaceKey],
+		namespaceKeys: [issueNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.issues.get({
 				owner: data.owner,
@@ -1072,19 +1093,20 @@ async function getIssueCommentsResult(
 	type RawIssueComment = Awaited<
 		ReturnType<GitHubClient["rest"]["issues"]["listComments"]>
 	>["data"][number];
+	const issueNamespaceKey = githubRevalidationSignalKeys.issueEntity({
+		owner: data.owner,
+		repo: data.repo,
+		issueNumber: data.issueNumber,
+	});
 
 	return getCachedGitHubRequest<RawIssueComment[], IssueComment[]>({
 		context,
 		resource: "issues.comments",
 		params: data,
 		freshForMs: githubCachePolicy.activity.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.issueEntity({
-				owner: data.owner,
-				repo: data.repo,
-				issueNumber: data.issueNumber,
-			}),
-		],
+		signalKeys: [issueNamespaceKey],
+		namespaceKeys: [issueNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.issues.listComments({
 				owner: data.owner,
@@ -1155,6 +1177,8 @@ async function getViewer(context: GitHubContext): Promise<AuthenticatedUser> {
 		resource: "viewer",
 		params: null,
 		freshForMs: githubCachePolicy.viewer.staleTimeMs,
+		namespaceKeys: ["viewer"],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.users.getAuthenticated({ headers }),
 		mapData: (viewer) => viewer,
@@ -1187,6 +1211,8 @@ async function getMyPullSlice({
 		params: { username, role },
 		freshForMs: githubCachePolicy.list.staleTimeMs,
 		signalKeys: [githubRevalidationSignalKeys.pullsMine],
+		namespaceKeys: [githubRevalidationSignalKeys.pullsMine],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.search.issuesAndPullRequests({
 				q: buildUserSearchQuery({
@@ -1221,6 +1247,8 @@ async function getMyIssueSlice({
 		params: { username, role },
 		freshForMs: githubCachePolicy.list.staleTimeMs,
 		signalKeys: [githubRevalidationSignalKeys.issuesMine],
+		namespaceKeys: [githubRevalidationSignalKeys.issuesMine],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.search.issuesAndPullRequests({
 				q: buildUserSearchQuery({
@@ -1397,6 +1425,8 @@ export const getUserRepos = createServerFn({ method: "GET" }).handler(
 			resource: "repos.list",
 			params: { sort: "updated", perPage: 10 },
 			freshForMs: githubCachePolicy.reposList.staleTimeMs,
+			namespaceKeys: ["repos.list"],
+			cacheMode: "split",
 			request: (headers) =>
 				context.octokit.rest.repos.listForAuthenticatedUser({
 					sort: "updated",
@@ -1847,6 +1877,11 @@ async function getPullFilesResult(
 ): Promise<PullFilesPage> {
 	const page = clampPage(data.page);
 	const perPage = clampPerPage(data.perPage, 20);
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
 
 	return getCachedGitHubRequest<RepoPullFile[], PullFilesPage>({
 		context,
@@ -1859,13 +1894,9 @@ async function getPullFilesResult(
 			perPage,
 		},
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (headers) =>
 			context.octokit.rest.pulls.listFiles({
 				owner: data.owner,
@@ -1895,18 +1926,20 @@ async function getPullFileSummariesResult(
 	context: GitHubContext,
 	data: PullFromRepoInput,
 ): Promise<PullFileSummary[]> {
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
+
 	return getCachedPaginatedGitHubRequest<RepoPullFile, PullFileSummary[]>({
 		context,
 		resource: "pulls.fileSummaries",
 		params: data,
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (page) =>
 			context.octokit.rest.pulls.listFiles({
 				owner: data.owner,
@@ -1953,6 +1986,12 @@ async function getPullReviewCommentsResult(
 	context: GitHubContext,
 	data: PullFromRepoInput,
 ): Promise<PullReviewComment[]> {
+	const pullNamespaceKey = githubRevalidationSignalKeys.pullEntity({
+		owner: data.owner,
+		repo: data.repo,
+		pullNumber: data.pullNumber,
+	});
+
 	return getCachedPaginatedGitHubRequest<
 		RepoPullReviewComment,
 		PullReviewComment[]
@@ -1961,13 +2000,9 @@ async function getPullReviewCommentsResult(
 		resource: "pulls.reviewComments",
 		params: data,
 		freshForMs: githubCachePolicy.activity.staleTimeMs,
-		signalKeys: [
-			githubRevalidationSignalKeys.pullEntity({
-				owner: data.owner,
-				repo: data.repo,
-				pullNumber: data.pullNumber,
-			}),
-		],
+		signalKeys: [pullNamespaceKey],
+		namespaceKeys: [pullNamespaceKey],
+		cacheMode: "split",
 		request: (page) =>
 			context.octokit.rest.pulls.listReviewComments({
 				owner: data.owner,
@@ -2110,28 +2145,41 @@ export const getRepoCollaborators = createServerFn({ method: "GET" })
 			return [];
 		}
 
-		try {
-			const allCollaborators = await context.octokit.paginate(
-				context.octokit.rest.repos.listCollaborators,
-				{
+		return getCachedPaginatedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["repos"]["listCollaborators"]>
+			>["data"][number],
+			RepoCollaborator[]
+		>({
+			context,
+			resource: "repos.collaborators",
+			params: data,
+			freshForMs: githubCachePolicy.viewer.staleTimeMs,
+			namespaceKeys: [
+				githubRevalidationSignalKeys.repoCollaborators({
 					owner: data.owner,
 					repo: data.repo,
+				}),
+			],
+			cacheMode: "split",
+			request: (page) =>
+				context.octokit.rest.repos.listCollaborators({
+					owner: data.owner,
+					repo: data.repo,
+					page,
 					per_page: 100,
-				},
-			);
-
-			return allCollaborators.map((c) => ({
-				login: c.login,
-				avatarUrl: c.avatar_url,
-				permissions: {
-					admin: c.permissions?.admin ?? false,
-					push: c.permissions?.push ?? false,
-					pull: c.permissions?.pull ?? false,
-				},
-			}));
-		} catch {
-			return [];
-		}
+				}),
+			mapData: (allCollaborators) =>
+				allCollaborators.map((c) => ({
+					login: c.login,
+					avatarUrl: c.avatar_url,
+					permissions: {
+						admin: c.permissions?.admin ?? false,
+						push: c.permissions?.push ?? false,
+						pull: c.permissions?.pull ?? false,
+					},
+				})),
+		}).catch(() => []);
 	});
 
 export type OrgTeamsInput = {
@@ -2146,22 +2194,30 @@ export const getOrgTeams = createServerFn({ method: "GET" })
 			return [];
 		}
 
-		try {
-			const allTeams = await context.octokit.paginate(
-				context.octokit.rest.teams.list,
-				{
+		return getCachedPaginatedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["teams"]["list"]>
+			>["data"][number],
+			OrgTeam[]
+		>({
+			context,
+			resource: "org.teams",
+			params: data,
+			freshForMs: githubCachePolicy.viewer.staleTimeMs,
+			namespaceKeys: [githubRevalidationSignalKeys.orgTeams({ org: data.org })],
+			cacheMode: "split",
+			request: (page) =>
+				context.octokit.rest.teams.list({
 					org: data.org,
+					page,
 					per_page: 100,
-				},
-			);
-
-			return allTeams.map((t) => ({
-				slug: t.slug,
-				name: t.name,
-			}));
-		} catch {
-			return [];
-		}
+				}),
+			mapData: (allTeams) =>
+				allTeams.map((t) => ({
+					slug: t.slug,
+					name: t.name,
+				})),
+		}).catch(() => []);
 	});
 
 export const requestPullReviewers = createServerFn({ method: "POST" })
@@ -2266,24 +2322,37 @@ export const getRepoLabels = createServerFn({ method: "GET" })
 			return [];
 		}
 
-		try {
-			const allLabels = await context.octokit.paginate(
-				context.octokit.rest.issues.listLabelsForRepo,
-				{
+		return getCachedPaginatedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["issues"]["listLabelsForRepo"]>
+			>["data"][number],
+			GitHubLabel[]
+		>({
+			context,
+			resource: "repos.labels",
+			params: data,
+			freshForMs: githubCachePolicy.viewer.staleTimeMs,
+			namespaceKeys: [
+				githubRevalidationSignalKeys.repoLabels({
 					owner: data.owner,
 					repo: data.repo,
+				}),
+			],
+			cacheMode: "split",
+			request: (page) =>
+				context.octokit.rest.issues.listLabelsForRepo({
+					owner: data.owner,
+					repo: data.repo,
+					page,
 					per_page: 100,
-				},
-			);
-
-			return allLabels.map((l) => ({
-				name: l.name,
-				color: l.color ?? "000000",
-				description: l.description ?? null,
-			}));
-		} catch {
-			return [];
-		}
+				}),
+			mapData: (allLabels) =>
+				allLabels.map((l) => ({
+					name: l.name,
+					color: l.color ?? "000000",
+					description: l.description ?? null,
+				})),
+		}).catch(() => []);
 	});
 
 export const setIssueLabels = createServerFn({ method: "POST" })
@@ -2335,6 +2404,12 @@ export const createRepoLabel = createServerFn({ method: "POST" })
 				name: data.name,
 				color: data.color,
 			});
+			await bumpGitHubCacheNamespaces([
+				githubRevalidationSignalKeys.repoLabels({
+					owner: data.owner,
+					repo: data.repo,
+				}),
+			]);
 			return {
 				name: response.data.name,
 				color: response.data.color ?? "000000",

@@ -29,7 +29,6 @@ export function PullDetailPage() {
 		...githubPullPageQueryOptions(scope, { owner, repo, pullNumber }),
 		enabled: hasMounted,
 	});
-
 	const viewerQuery = useQuery({
 		...githubViewerQueryOptions(scope),
 		enabled: hasMounted,

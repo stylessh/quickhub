@@ -20,5 +20,12 @@
 			"database_id": "7a94a843-0906-416c-9908-4c9fe5339db7",
 			"migrations_dir": "drizzle"
 		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "GITHUB_CACHE_KV",
+			"id": "2e46aa8dd4554072a64e1aad955d6adc",
+			"preview_id": "373842a94f694ce48f5f5376ab622b18"
+		}
 	]
 }

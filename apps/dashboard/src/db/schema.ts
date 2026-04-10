@@ -87,3 +87,9 @@ export const githubRevalidationSignal = sqliteTable(
 		updatedAt: integer("updated_at").notNull(),
 	},
 );
+
+export const githubCacheNamespace = sqliteTable("github_cache_namespace", {
+	namespaceKey: text("namespace_key").primaryKey(),
+	version: integer("version").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+});

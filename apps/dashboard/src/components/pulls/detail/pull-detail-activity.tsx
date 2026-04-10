@@ -48,7 +48,6 @@ import type {
 	PullDetail,
 	PullStatus,
 } from "#/lib/github.types";
-import { githubCachePolicy } from "#/lib/github-cache-policy";
 import { checkPermissionWarning } from "#/lib/warning-store";
 
 export function PullDetailActivitySection({
@@ -149,7 +148,6 @@ function MergeStatusSection({
 	const statusQuery = useQuery({
 		...githubPullStatusQueryOptions(scope, { owner, repo, pullNumber }),
 		refetchOnWindowFocus: "always",
-		refetchInterval: githubCachePolicy.status.staleTimeMs,
 	});
 
 	const status = statusQuery.data ?? null;

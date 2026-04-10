@@ -4,6 +4,7 @@ import {
 	type GitHubCacheStore,
 	type GitHubCacheStoreEntry,
 	type GitHubFetchResult,
+	type GitHubPayloadCacheStore,
 	getOrRevalidateGitHubResource,
 } from "./github-cache";
 
@@ -157,9 +158,9 @@ describe("getOrRevalidateGitHubResource", () => {
 			fetcher,
 		});
 
-		await Promise.resolve();
-
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => {
+			expect(fetcher).toHaveBeenCalledTimes(1);
+		});
 
 		resolveFetch?.({
 			kind: "success",
@@ -253,5 +254,143 @@ describe("getOrRevalidateGitHubResource", () => {
 
 		expect(result).toEqual({ title: "New title" });
 		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns a fresh split-cache payload from the payload store", async () => {
+		const get = vi.fn(async () => buildEntry());
+		const put = vi.fn(async () => undefined);
+		const payloadStore = { get, put } satisfies GitHubPayloadCacheStore;
+		const fetcher =
+			vi.fn<
+				(parameters: {
+					etag?: string | null;
+					lastModified?: string | null;
+				}) => Promise<GitHubFetchResult<{ login: string }>>
+			>();
+
+		const result = await getOrRevalidateGitHubResource({
+			userId: "user-1",
+			resource: "viewer",
+			freshForMs: 60_000,
+			cacheMode: "split",
+			namespaceKeys: ["viewer"],
+			payloadStore,
+			getNamespaceVersions: async () => ({ viewer: 3 }),
+			now: () => 150,
+			fetcher,
+		});
+
+		expect(result).toEqual({ login: "adn" });
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(get).toHaveBeenCalledTimes(1);
+	});
+
+	it("hydrates the split payload store from a fresh legacy entry on KV miss", async () => {
+		const store = createMemoryStore([buildEntry()]);
+		const storedPayloadEntries = new Map<string, GitHubCacheStoreEntry>();
+		const get = vi.fn(async () => null);
+		const put = vi.fn(
+			async (storageKey: string, entry: GitHubCacheStoreEntry) => {
+				storedPayloadEntries.set(storageKey, structuredClone(entry));
+			},
+		);
+		const payloadStore = { get, put } satisfies GitHubPayloadCacheStore;
+		const fetcher =
+			vi.fn<
+				(parameters: {
+					etag?: string | null;
+					lastModified?: string | null;
+				}) => Promise<GitHubFetchResult<{ login: string }>>
+			>();
+
+		const result = await getOrRevalidateGitHubResource({
+			userId: "user-1",
+			resource: "viewer",
+			freshForMs: 60_000,
+			cacheMode: "split",
+			namespaceKeys: ["viewer"],
+			store,
+			payloadStore,
+			getNamespaceVersions: async () => ({ viewer: 0 }),
+			now: () => 150,
+			fetcher,
+		});
+
+		expect(result).toEqual({ login: "adn" });
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(get).toHaveBeenCalledTimes(1);
+		expect(put).toHaveBeenCalledTimes(1);
+		expect(storedPayloadEntries.size).toBe(1);
+		expect(Array.from(storedPayloadEntries.values())).toEqual([buildEntry()]);
+	});
+
+	it("extends freshness when GitHub budget is low", async () => {
+		const store = createMemoryStore([
+			buildEntry({
+				freshUntil: 50,
+			}),
+		]);
+		const fetcher = vi.fn<
+			(parameters: {
+				etag?: string | null;
+				lastModified?: string | null;
+			}) => Promise<GitHubFetchResult<{ login: string }>>
+		>(async () => ({
+			kind: "success",
+			data: { login: "adn" },
+			metadata: createGitHubResponseMetadata(200, {
+				etag: '"next"',
+				"x-ratelimit-remaining": "10",
+				"x-ratelimit-reset": "0",
+			}),
+		}));
+
+		const result = await getOrRevalidateGitHubResource({
+			userId: "user-1",
+			resource: "viewer",
+			freshForMs: 15_000,
+			store,
+			now: () => 500,
+			fetcher,
+		});
+
+		expect(result).toEqual({ login: "adn" });
+
+		const updatedEntry = await store.get("user-1::viewer::null");
+		expect(updatedEntry?.freshUntil).toBe(300_500);
+		expect(updatedEntry?.rateLimitRemaining).toBe(10);
+	});
+
+	it("serves stale cache when GitHub is rate limited", async () => {
+		const store = createMemoryStore([
+			buildEntry({
+				freshUntil: 50,
+			}),
+		]);
+
+		const result = await getOrRevalidateGitHubResource({
+			userId: "user-1",
+			resource: "viewer",
+			freshForMs: 1_000,
+			store,
+			now: () => 500,
+			fetcher: vi.fn(async () => {
+				throw {
+					status: 403,
+					response: {
+						headers: {
+							"x-ratelimit-remaining": "0",
+							"x-ratelimit-reset": "2",
+						},
+					},
+				};
+			}),
+		});
+
+		expect(result).toEqual({ login: "adn" });
+
+		const updatedEntry = await store.get("user-1::viewer::null");
+		expect(updatedEntry?.freshUntil).toBe(60_500);
+		expect(updatedEntry?.statusCode).toBe(403);
 	});
 });
