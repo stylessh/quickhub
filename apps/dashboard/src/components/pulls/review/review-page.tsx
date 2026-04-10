@@ -53,7 +53,7 @@ import type {
 import { buildFileTree } from "./review-utils";
 
 const routeApi = getRouteApi("/_protected/$owner/$repo/review/$pullId");
-const PULL_FILES_PAGE_SIZE = 50;
+const PULL_FILES_PAGE_SIZE = 25;
 const reviewDiffPaneImport = import("./review-diff-pane");
 const ReviewDiffPane = lazy(() =>
 	reviewDiffPaneImport.then((mod) => ({

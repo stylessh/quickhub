@@ -8,7 +8,7 @@ import {
 } from "#/lib/github.query";
 import { buildSeo, formatPageTitle, summarizeText } from "#/lib/seo";
 
-const PULL_FILES_PAGE_SIZE = 50;
+const PULL_FILES_PAGE_SIZE = 25;
 
 export const Route = createFileRoute("/_protected/$owner/$repo/review/$pullId")(
 	{
