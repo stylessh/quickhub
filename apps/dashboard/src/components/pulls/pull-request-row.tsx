@@ -79,7 +79,7 @@ export const PullRequestRow = memo(function PullRequestRow({
 					<Icon size={16} strokeWidth={2} />
 				</div>
 				<div className="min-w-0 flex-1 flex flex-col gap-1">
-					<p className="truncate text-sm font-medium">{pr.title}</p>
+					<p className="text-sm font-medium md:truncate">{pr.title}</p>
 					<p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
 						{pr.repository.fullName} #{pr.number}
 						{pr.author && (
@@ -97,7 +97,7 @@ export const PullRequestRow = memo(function PullRequestRow({
 						<span>{formatRelativeTime(pr.updatedAt)}</span>
 					</p>
 				</div>
-				<div className="mt-[3px] flex shrink-0 items-center gap-4">
+				<div className="mt-[3px] hidden shrink-0 items-center gap-4 md:flex">
 					<button
 						type="button"
 						data-action

@@ -76,7 +76,7 @@ function IssuesPage() {
 
 		return (
 			<div ref={scrollContainerRef} className="h-full overflow-auto py-10">
-				<div className="mx-auto grid max-w-7xl gap-14 px-6 xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)]">
+				<div className="mx-auto grid max-w-7xl gap-14 px-3 md:px-6 xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)]">
 					<aside className="flex h-fit flex-col gap-5 xl:sticky xl:top-0">
 						<div className="flex flex-col gap-2">
 							<h1 className="text-2xl font-semibold tracking-tight">Issues</h1>

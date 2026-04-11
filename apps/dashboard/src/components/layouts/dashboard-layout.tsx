@@ -8,6 +8,7 @@ import {
 import { useGitHubRevalidation } from "#/lib/use-github-revalidation";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { DashboardBottomBar } from "./dashboard-bottombar";
+import { DashboardMobileNav } from "./dashboard-mobile-nav";
 import { DashboardTopbar } from "./dashboard-topbar";
 
 const CommandPalette = lazy(() =>
@@ -70,6 +71,15 @@ export function DashboardLayout() {
 				</div>
 			</div>
 			<DashboardBottomBar />
+			<DashboardMobileNav
+				user={user}
+				tabsReady={tabsReady}
+				counts={{
+					pulls: pullCount,
+					issues: issueCount,
+					reviews: pullsQuery.data?.reviewRequested.length,
+				}}
+			/>
 			<Suspense>
 				<CommandPalette />
 				<GitHubAccessDialog userId={user.id} />
