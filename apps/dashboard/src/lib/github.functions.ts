@@ -32,6 +32,7 @@ import type {
 	UserRepoSummary,
 } from "./github.types";
 import {
+	buildGitHubAppAuthorizePath,
 	buildGitHubAppInstallUrl,
 	type GitHubAppAccessState,
 	type GitHubAppInstallation,
@@ -95,6 +96,41 @@ type RepoPullFile = Awaited<
 type RepoPullReviewComment = Awaited<
 	ReturnType<GitHubClient["rest"]["pulls"]["listReviewComments"]>
 >["data"][number];
+type RepositoryPermissions = {
+	admin?: boolean;
+	maintain?: boolean;
+	push?: boolean;
+	triage?: boolean;
+	pull?: boolean;
+};
+type GitHubBranchRule = {
+	ruleset_id?: number;
+};
+type GitHubRepositoryRuleset = {
+	current_user_can_bypass?:
+		| "always"
+		| "pull_requests_only"
+		| "never"
+		| "exempt";
+};
+type GitHubBranchProtection = {
+	enforce_admins?: {
+		enabled?: boolean;
+	};
+	required_pull_request_reviews?: {
+		bypass_pull_request_allowances?: {
+			users?: Array<{ login?: string }>;
+			teams?: Array<{ slug?: string }>;
+			apps?: Array<{ slug?: string }>;
+		};
+	};
+};
+type GitHubUserTeam = {
+	slug?: string;
+	organization?: {
+		login?: string;
+	};
+};
 
 type RepoState = "all" | "closed" | "open";
 type PullSort = "created" | "long-running" | "popularity" | "updated";
@@ -116,6 +152,8 @@ async function bustPullDetailCaches(userId: string, params: PullCacheParams) {
 		bustGitHubCache(userId, "pulls.detail.raw", params),
 		bustGitHubCache(userId, "pulls.status.raw", params),
 		bustGitHubCache(userId, "pulls.status.v1", params),
+		bustGitHubCache(userId, "pulls.status.v2", params),
+		bustGitHubCache(userId, "pulls.status.v3", params),
 	]);
 }
 
@@ -141,6 +179,7 @@ type GitHubApiLabel = {
 };
 
 type GitHubInstallationAccountPayload = {
+	id?: number;
 	login?: string;
 	avatar_url?: string | null;
 	type?: string;
@@ -529,6 +568,419 @@ async function getGitHubContext(): Promise<GitHubContext | null> {
 		session,
 		octokit: await getGitHubClientByUserId(session.user.id),
 	};
+}
+
+function toRepositorySelection(value: string | undefined) {
+	return value === "all" || value === "selected" ? value : "unknown";
+}
+
+function mapGitHubAppInstallations(
+	payload: GitHubUserInstallationsPayload,
+): GitHubAppInstallation[] {
+	return (payload.installations ?? []).flatMap((installation) => {
+		if (!installation.id || !installation.account?.login) {
+			return [];
+		}
+
+		const targetType = toInstallationTargetType(installation.target_type);
+
+		return [
+			{
+				id: installation.id,
+				account: {
+					id: installation.account.id ?? null,
+					login: installation.account.login,
+					name: null,
+					avatarUrl: installation.account.avatar_url ?? null,
+					type: toInstallationTargetType(installation.account.type),
+				},
+				targetType,
+				repositorySelection: toRepositorySelection(
+					installation.repository_selection,
+				),
+				manageUrl: installation.html_url ?? null,
+				suspendedAt: installation.suspended_at ?? null,
+			},
+		];
+	});
+}
+
+async function getGitHubAppUserInstallations(userId: string): Promise<{
+	installations: GitHubAppInstallation[];
+	installationsAvailable: boolean;
+}> {
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	const appUserOctokit = await getGitHubAppUserClientByUserId(userId);
+	if (!appUserOctokit) {
+		return { installations: [], installationsAvailable: false };
+	}
+
+	try {
+		const installationsResponse = await appUserOctokit.request(
+			"GET /user/installations",
+			{
+				per_page: 100,
+			},
+		);
+		return {
+			installations: mapGitHubAppInstallations(
+				installationsResponse.data as GitHubUserInstallationsPayload,
+			),
+			installationsAvailable: true,
+		};
+	} catch (error) {
+		console.error("[github-access] failed to load app installations", error);
+		return { installations: [], installationsAvailable: false };
+	}
+}
+
+async function getGitHubContextForOwner(owner: string) {
+	const context = await getGitHubContext();
+	if (!context) {
+		return null;
+	}
+
+	const { installations } = await getGitHubAppUserInstallations(
+		context.session.user.id,
+	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
+	if (!installation) {
+		return context;
+	}
+
+	try {
+		const { getGitHubInstallationClient } = await import("./github.server");
+		return {
+			...context,
+			octokit: await getGitHubInstallationClient(installation.id),
+		};
+	} catch (error) {
+		console.error(
+			"[github-access] failed to create installation client",
+			error,
+		);
+		return context;
+	}
+}
+
+async function getGitHubContextForRepository(input: {
+	owner: string;
+	repo: string;
+}) {
+	return getGitHubContextForOwner(input.owner);
+}
+
+function findGitHubAppInstallationForOwner(
+	installations: GitHubAppInstallation[],
+	owner: string,
+) {
+	const normalizedOwner = owner.toLowerCase();
+	return installations.find(
+		(candidate) =>
+			candidate.account.login.toLowerCase() === normalizedOwner ||
+			(candidate.targetType === "User" &&
+				candidate.account.login.toLowerCase() === normalizedOwner),
+	);
+}
+
+async function getGitHubUserContextForOwner(owner: string) {
+	const context = await getGitHubContext();
+	if (!context) {
+		return null;
+	}
+
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	const appUserOctokit = await getGitHubAppUserClientByUserId(
+		context.session.user.id,
+	);
+	if (!appUserOctokit) {
+		return context;
+	}
+
+	const { installations } = await getGitHubAppUserInstallations(
+		context.session.user.id,
+	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
+	if (!installation) {
+		return context;
+	}
+
+	return {
+		...context,
+		octokit: appUserOctokit,
+	};
+}
+
+async function getGitHubUserContextForRepository(input: {
+	owner: string;
+	repo: string;
+}) {
+	return getGitHubUserContextForOwner(input.owner);
+}
+
+function isBypassableRulesetMode(
+	mode: GitHubRepositoryRuleset["current_user_can_bypass"] | undefined,
+) {
+	return (
+		mode === "always" || mode === "pull_requests_only" || mode === "exempt"
+	);
+}
+
+function mergeRepositoryPermissions(
+	...permissionsList: Array<RepositoryPermissions | null | undefined>
+): RepositoryPermissions | undefined {
+	const permissions = permissionsList.filter(
+		(candidate): candidate is RepositoryPermissions => Boolean(candidate),
+	);
+	if (permissions.length === 0) {
+		return undefined;
+	}
+
+	return {
+		admin: permissions.some((permission) => permission.admin === true),
+		maintain: permissions.some((permission) => permission.maintain === true),
+		push: permissions.some((permission) => permission.push === true),
+		triage: permissions.some((permission) => permission.triage === true),
+		pull: permissions.some((permission) => permission.pull === true),
+	};
+}
+
+async function getRepositoryPermissions(
+	context: GitHubContext | null,
+	owner: string,
+	repo: string,
+) {
+	if (!context) {
+		return null;
+	}
+
+	const response = await context.octokit.rest.repos
+		.get({ owner, repo })
+		.catch(() => null);
+	return response?.data.permissions ?? null;
+}
+
+async function getRulesetPullRequestBypassState({
+	branch,
+	context,
+	owner,
+	repo,
+}: {
+	branch: string;
+	context: GitHubContext;
+	owner: string;
+	repo: string;
+}) {
+	try {
+		const rulesResponse = await context.octokit.request(
+			"GET /repos/{owner}/{repo}/rules/branches/{branch}",
+			{
+				owner,
+				repo,
+				branch,
+				per_page: 100,
+			},
+		);
+		const rules = rulesResponse.data as GitHubBranchRule[];
+		const rulesetIds = Array.from(
+			new Set(
+				rules
+					.map((rule) => rule.ruleset_id)
+					.filter((id): id is number => typeof id === "number"),
+			),
+		);
+
+		if (rulesetIds.length === 0) {
+			return null;
+		}
+
+		const rulesets = await Promise.all(
+			rulesetIds.map(async (rulesetId) => {
+				const response = await context.octokit.request(
+					"GET /repos/{owner}/{repo}/rulesets/{ruleset_id}",
+					{
+						owner,
+						repo,
+						ruleset_id: rulesetId,
+						includes_parents: true,
+					},
+				);
+				return response.data as GitHubRepositoryRuleset;
+			}),
+		);
+
+		if (
+			rulesets.some((ruleset) => ruleset.current_user_can_bypass === "never")
+		) {
+			return false;
+		}
+
+		if (
+			rulesets.every((ruleset) =>
+				isBypassableRulesetMode(ruleset.current_user_can_bypass),
+			)
+		) {
+			return true;
+		}
+
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function loginMatches(left: string | undefined, right: string) {
+	return left?.toLowerCase() === right.toLowerCase();
+}
+
+async function getAuthenticatedUserTeamSlugsForOrg(
+	context: GitHubContext,
+	org: string,
+) {
+	const teamSlugs = new Set<string>();
+	let page = 1;
+
+	while (true) {
+		const response = await context.octokit.request("GET /user/teams", {
+			page,
+			per_page: 100,
+		});
+		const teams = response.data as GitHubUserTeam[];
+		for (const team of teams) {
+			if (loginMatches(team.organization?.login, org) && team.slug) {
+				teamSlugs.add(team.slug.toLowerCase());
+			}
+		}
+
+		if (teams.length < 100) {
+			break;
+		}
+
+		page += 1;
+	}
+
+	return teamSlugs;
+}
+
+async function legacyBranchProtectionAllowsPullRequestBypass({
+	branch,
+	context,
+	owner,
+	permissions,
+	repo,
+	viewerLogin,
+}: {
+	branch: string;
+	context: GitHubContext;
+	owner: string;
+	permissions: RepositoryPermissions | undefined;
+	repo: string;
+	viewerLogin: string;
+}) {
+	try {
+		const response = await context.octokit.request(
+			"GET /repos/{owner}/{repo}/branches/{branch}/protection",
+			{
+				owner,
+				repo,
+				branch,
+			},
+		);
+		const protection = response.data as GitHubBranchProtection;
+		const allowances =
+			protection.required_pull_request_reviews?.bypass_pull_request_allowances;
+		const allowedUsers = allowances?.users ?? [];
+		if (allowedUsers.some((user) => loginMatches(user.login, viewerLogin))) {
+			return true;
+		}
+
+		const allowedTeamSlugs = (allowances?.teams ?? []).flatMap((team) =>
+			team.slug ? [team.slug.toLowerCase()] : [],
+		);
+		if (allowedTeamSlugs.length > 0) {
+			const userTeamSlugs = await getAuthenticatedUserTeamSlugsForOrg(
+				context,
+				owner,
+			);
+			if (allowedTeamSlugs.some((slug) => userTeamSlugs.has(slug))) {
+				return true;
+			}
+		}
+
+		return (
+			permissions?.admin === true && protection.enforce_admins?.enabled !== true
+		);
+	} catch {
+		return null;
+	}
+}
+
+async function getPullRequestBypassState({
+	branch,
+	context,
+	fallbackContext,
+	owner,
+	permissions,
+	repo,
+}: {
+	branch: string;
+	context: GitHubContext;
+	fallbackContext: GitHubContext | null;
+	owner: string;
+	permissions: RepositoryPermissions | undefined;
+	repo: string;
+}) {
+	const contexts = [context, fallbackContext].filter(
+		(candidate, index, candidates): candidate is GitHubContext =>
+			Boolean(candidate) && candidates.indexOf(candidate) === index,
+	);
+
+	let rulesetState: boolean | null = null;
+	for (const candidate of contexts) {
+		const candidateRulesetState = await getRulesetPullRequestBypassState({
+			branch,
+			context: candidate,
+			owner,
+			repo,
+		});
+		if (candidateRulesetState === false) {
+			rulesetState ??= false;
+		}
+		if (candidateRulesetState === true) {
+			rulesetState = true;
+		}
+	}
+
+	let legacyState: boolean | null = null;
+	for (const candidate of contexts) {
+		try {
+			const viewerResponse =
+				await candidate.octokit.rest.users.getAuthenticated();
+			const candidateLegacyState =
+				await legacyBranchProtectionAllowsPullRequestBypass({
+					branch,
+					context: candidate,
+					owner,
+					permissions,
+					repo,
+					viewerLogin: viewerResponse.data.login,
+				});
+			if (candidateLegacyState === false) {
+				legacyState ??= false;
+			}
+			if (candidateLegacyState === true) {
+				legacyState = true;
+			}
+		} catch {}
+	}
+
+	if (rulesetState === false || legacyState === false) {
+		return false;
+	}
+
+	return (
+		rulesetState === true || legacyState === true || permissions?.admin === true
+	);
 }
 
 function buildUserSearchQuery({
@@ -1252,25 +1704,34 @@ async function computePullStatus(
 	data: PullFromRepoInput,
 	pull: RepoPullDetail,
 ): Promise<PullStatus> {
-	const [reviewsResponse, checksResponse, repoResponse] = await Promise.all([
-		context.octokit.rest.pulls.listReviews({
-			owner: data.owner,
-			repo: data.repo,
-			pull_number: data.pullNumber,
-			per_page: 100,
-		}),
-		context.octokit.rest.checks
-			.listForRef({
+	const [reviewsResponse, checksResponse, userContext, oauthContext] =
+		await Promise.all([
+			context.octokit.rest.pulls.listReviews({
 				owner: data.owner,
 				repo: data.repo,
-				ref: pull.head.sha,
+				pull_number: data.pullNumber,
 				per_page: 100,
-			})
-			.catch(() => null),
-		context.octokit.rest.repos
-			.get({ owner: data.owner, repo: data.repo })
-			.catch(() => null),
-	]);
+			}),
+			context.octokit.rest.checks
+				.listForRef({
+					owner: data.owner,
+					repo: data.repo,
+					ref: pull.head.sha,
+					per_page: 100,
+				})
+				.catch(() => null),
+			getGitHubUserContextForRepository(data),
+			getGitHubContext(),
+		]);
+	const permissions = mergeRepositoryPermissions(
+		await getRepositoryPermissions(
+			userContext ?? context,
+			data.owner,
+			data.repo,
+		),
+		await getRepositoryPermissions(oauthContext, data.owner, data.repo),
+		pull.base.repo.permissions,
+	);
 
 	const latestReviews = new Map<
 		string,
@@ -1321,11 +1782,16 @@ async function computePullStatus(
 		behindBy = null;
 	}
 
-	const permissions =
-		repoResponse?.data.permissions ?? pull.base.repo.permissions;
 	const canUpdateBranch =
 		!permissions || permissions.push === true || permissions.admin === true;
-	const canBypassProtections = permissions?.admin === true;
+	const canBypassProtections = await getPullRequestBypassState({
+		branch: pull.base.ref,
+		context: userContext ?? context,
+		fallbackContext: oauthContext,
+		owner: data.owner,
+		permissions,
+		repo: data.repo,
+	});
 
 	return {
 		reviews: Array.from(latestReviews.values()),
@@ -1368,7 +1834,7 @@ async function getPullStatusResult(
 
 	return getOrRevalidateGitHubResource<PullStatus>({
 		userId: context.session.user.id,
-		resource: "pulls.status.v1",
+		resource: "pulls.status.v3",
 		params: data,
 		freshForMs: githubCachePolicy.status.staleTimeMs,
 		signalKeys: [pullNamespaceKey],
@@ -1733,52 +2199,10 @@ export const getGitHubAppAccessState = createServerFn({
 
 	const viewer = await getViewer(context);
 	const appSlug = getGitHubAppSlug();
+	const appAuthorizationUrl = buildGitHubAppAuthorizePath();
 	const publicInstallUrl = buildGitHubAppInstallUrl(appSlug);
-
-	// GET /user/installations requires a GitHub App user-to-server token (ghu_).
-	// With an OAuth App token (gho_), this endpoint returns 403 — expected behavior.
-	let installations: GitHubAppInstallation[] = [];
-	let installationsAvailable = false;
-	try {
-		const installationsResponse = await context.octokit.request(
-			"GET /user/installations",
-			{
-				per_page: 100,
-			},
-		);
-		installationsAvailable = true;
-		const payload =
-			installationsResponse.data as GitHubUserInstallationsPayload;
-		installations = (payload.installations ?? []).flatMap((installation) => {
-			if (!installation.id || !installation.account?.login) {
-				return [];
-			}
-
-			const targetType = toInstallationTargetType(installation.target_type);
-
-			return [
-				{
-					id: installation.id,
-					account: {
-						login: installation.account.login,
-						name: null,
-						avatarUrl: installation.account.avatar_url ?? null,
-						type: toInstallationTargetType(installation.account.type),
-					},
-					targetType,
-					repositorySelection:
-						installation.repository_selection === "all" ||
-						installation.repository_selection === "selected"
-							? installation.repository_selection
-							: "unknown",
-					manageUrl: installation.html_url ?? null,
-					suspendedAt: installation.suspended_at ?? null,
-				},
-			];
-		});
-	} catch {
-		// Silently ignored — OAuth App tokens cannot list GitHub App installations.
-	}
+	const { installations, installationsAvailable } =
+		await getGitHubAppUserInstallations(context.session.user.id);
 
 	let organizations: GitHubOrganization[] = [];
 	try {
@@ -1817,6 +2241,22 @@ export const getGitHubAppAccessState = createServerFn({
 	const orgInstallations = installations.filter(
 		(installation) => installation.targetType === "Organization",
 	);
+	const organizationByLogin = new Map(
+		organizations.map((organization) => [
+			organization.login.toLowerCase(),
+			organization,
+		]),
+	);
+	for (const installation of orgInstallations) {
+		if (!organizationByLogin.has(installation.account.login.toLowerCase())) {
+			organizationByLogin.set(installation.account.login.toLowerCase(), {
+				id: installation.account.id ?? installation.id,
+				login: installation.account.login,
+				avatarUrl: installation.account.avatarUrl,
+			});
+		}
+	}
+	organizations = [...organizationByLogin.values()];
 	const installedOrganizationLogins = new Set(
 		orgInstallations.map((installation) =>
 			installation.account.login.toLowerCase(),
@@ -1826,6 +2266,7 @@ export const getGitHubAppAccessState = createServerFn({
 	return {
 		viewerLogin,
 		appSlug,
+		appAuthorizationUrl,
 		publicInstallUrl,
 		installationsAvailable,
 		personalInstallation,
@@ -1977,7 +2418,7 @@ export const getPullsFromUser = createServerFn({ method: "GET" })
 export const getPullsFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullsFromRepoInput>)
 	.handler(async ({ data }): Promise<PullSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2020,7 +2461,7 @@ export const getPullsFromRepo = createServerFn({ method: "GET" })
 export const getCommentPage = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<CommentPageInput>)
 	.handler(async ({ data }) => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { comments: [], total: 0 };
 		}
@@ -2038,7 +2479,7 @@ type TimelineEventPageInput = {
 export const getTimelineEventPage = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<TimelineEventPageInput>)
 	.handler(async ({ data }) => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { events: [], hasMore: false };
 		}
@@ -2049,7 +2490,7 @@ export const getTimelineEventPage = createServerFn({ method: "GET" })
 export const getPullFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullDetail | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2060,7 +2501,7 @@ export const getPullFromRepo = createServerFn({ method: "GET" })
 export const getPullComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2154,7 +2595,7 @@ export const getIssuesFromUser = createServerFn({ method: "GET" })
 export const getIssuesFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssuesFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2201,7 +2642,7 @@ export const getIssuesFromRepo = createServerFn({ method: "GET" })
 export const getIssueFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueDetail | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2212,7 +2653,7 @@ export const getIssueFromRepo = createServerFn({ method: "GET" })
 export const getIssueComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2223,7 +2664,7 @@ export const getIssueComments = createServerFn({ method: "GET" })
 export const getIssuePageData = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssuePageData | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2234,7 +2675,7 @@ export const getIssuePageData = createServerFn({ method: "GET" })
 export const getPullStatus = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullStatus | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2245,7 +2686,7 @@ export const getPullStatus = createServerFn({ method: "GET" })
 export const getPullPageData = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullPageData | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2258,7 +2699,7 @@ type UpdatePullBodyInput = PullFromRepoInput & { body: string };
 export const updatePullBody = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<UpdatePullBodyInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2280,7 +2721,7 @@ export const updatePullBody = createServerFn({ method: "POST" })
 export const updatePullBranch = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2306,7 +2747,7 @@ export type MergePullInput = PullFromRepoInput & {
 export const mergePullRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<MergePullInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubUserContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2330,7 +2771,7 @@ export const deleteBranch = createServerFn({ method: "POST" })
 		identityValidator<{ owner: string; repo: string; branch: string }>,
 	)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2439,7 +2880,7 @@ async function getPullFileSummariesResult(
 export const getPullFileSummaries = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullFileSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2450,7 +2891,7 @@ export const getPullFileSummaries = createServerFn({ method: "GET" })
 export const getPullFiles = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFilesPageInput>)
 	.handler(async ({ data }): Promise<PullFilesPage> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { files: [], nextPage: null };
 		}
@@ -2513,7 +2954,7 @@ async function getPullReviewCommentsResult(
 export const getPullReviewComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullReviewComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2524,7 +2965,7 @@ export const getPullReviewComments = createServerFn({ method: "GET" })
 export const submitPullReview = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<SubmitReviewInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2560,7 +3001,7 @@ export const submitPullReview = createServerFn({ method: "POST" })
 export const createReviewComment = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<CreateReviewCommentInput>)
 	.handler(async ({ data }): Promise<PullReviewComment | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2616,7 +3057,7 @@ export type RepoCollaboratorsInput = {
 export const getRepoCollaborators = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<RepoCollaboratorsInput>)
 	.handler(async ({ data }): Promise<RepoCollaborator[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2665,7 +3106,7 @@ export type OrgTeamsInput = {
 export const getOrgTeams = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<OrgTeamsInput>)
 	.handler(async ({ data }): Promise<OrgTeam[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForOwner(data.org);
 		if (!context) {
 			return [];
 		}
@@ -2699,7 +3140,7 @@ export const getOrgTeams = createServerFn({ method: "GET" })
 export const requestPullReviewers = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2726,7 +3167,7 @@ export const requestPullReviewers = createServerFn({ method: "POST" })
 export const removeReviewRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2761,7 +3202,7 @@ export type DismissReviewInput = {
 export const dismissPullReview = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<DismissReviewInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2793,7 +3234,7 @@ export type RepoLabelsInput = {
 export const getRepoLabels = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<RepoLabelsInput>)
 	.handler(async ({ data }): Promise<GitHubLabel[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2834,7 +3275,7 @@ export const getRepoLabels = createServerFn({ method: "GET" })
 export const setIssueLabels = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<SetLabelsInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2868,7 +3309,7 @@ export const setIssueLabels = createServerFn({ method: "POST" })
 export const createRepoLabel = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<CreateLabelInput>)
 	.handler(async ({ data }): Promise<GitHubLabel | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
