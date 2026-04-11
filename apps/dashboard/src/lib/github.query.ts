@@ -148,8 +148,10 @@ export const githubQueryKeys = {
 		scope: GitHubQueryScope,
 		input: { owner: string; repo: string },
 	) => ["github", scope.userId, "repoLabels", input] as const,
-	orgTeams: (scope: GitHubQueryScope, org: string) =>
-		["github", scope.userId, "orgTeams", org] as const,
+	orgTeams: (
+		scope: GitHubQueryScope,
+		input: { org: string; owner: string; repo: string },
+	) => ["github", scope.userId, "orgTeams", input] as const,
 	commentPage: (
 		scope: GitHubQueryScope,
 		input: { owner: string; repo: string; issueNumber: number; page: number },
@@ -367,11 +369,11 @@ export function githubRepoLabelsQueryOptions(
 
 export function githubOrgTeamsQueryOptions(
 	scope: GitHubQueryScope,
-	org: string,
+	input: { org: string; owner: string; repo: string },
 ) {
 	return queryOptions({
-		queryKey: githubQueryKeys.orgTeams(scope, org),
-		queryFn: () => getOrgTeams({ data: { org } }),
+		queryKey: githubQueryKeys.orgTeams(scope, input),
+		queryFn: () => getOrgTeams({ data: input }),
 		staleTime: githubCachePolicy.viewer.staleTimeMs,
 		gcTime: githubCachePolicy.viewer.gcTimeMs,
 	});
