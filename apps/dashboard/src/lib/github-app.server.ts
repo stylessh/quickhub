@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { account } from "../db/schema";
+import { normalizeGitHubAppPrivateKey } from "./github-private-key";
 
 type WorkerEnvRecord = typeof env & Record<string, string | undefined>;
 
@@ -75,7 +76,7 @@ export function getGitHubAppId(): string | null {
 
 export function getGitHubAppPrivateKey(): string | null {
 	const privateKey = pickFirstNonEmpty(getWorkerEnv().GITHUB_APP_PRIVATE_KEY);
-	return privateKey?.replace(/\\n/g, "\n") ?? null;
+	return privateKey ? normalizeGitHubAppPrivateKey(privateKey) : null;
 }
 
 export function getGitHubAppSlug(): string | null {

@@ -29,7 +29,7 @@ GitHub App:
 - Webhook URL: `/api/webhooks/github`
 - Used for installation discovery and app-scoped repo access.
 
-Copy `.dev.vars.example` to `.dev.vars` and fill in the real values. Never commit `.dev.vars` or private keys.
+Copy `.dev.vars.example` to `.dev.vars` and fill in the real values. GitHub commonly downloads a PKCS#1 private key with `BEGIN RSA PRIVATE KEY`; the dashboard normalizes it for Octokit at runtime. Never commit `.dev.vars` or private keys.
 
 # Building For Production
 

@@ -23,6 +23,7 @@ GITHUB_APP_ID=
 # Private key generated from the GitHub App settings page.
 # Store as a quoted value with escaped newlines:
 # GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
+# GitHub commonly downloads PKCS#1 ("BEGIN RSA PRIVATE KEY"); DiffKit normalizes it for Octokit at runtime.
 GITHUB_APP_PRIVATE_KEY=
 # The slug from your GitHub App URL (https://github.com/apps/<slug>)
 GITHUB_APP_SLUG=

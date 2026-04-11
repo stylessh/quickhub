@@ -92,7 +92,7 @@ A fast, design-first GitHub dashboard for developers who want to stay on top of 
 
    The GitHub App user authorization flow stores a `ghu_` user-to-server token for installation discovery. Repo-scoped reads and writes prefer GitHub App installation tokens when the app is installed, and fall back to OAuth for external/public repositories.
 
-   Store the downloaded private key as an escaped single-line value in `.dev.vars`:
+   Store the downloaded private key as an escaped single-line value in `.dev.vars`. GitHub commonly downloads a PKCS#1 key with `BEGIN RSA PRIVATE KEY`; DiffKit normalizes it to the PKCS#8 format required by the GitHub App JWT library at runtime.
 
    ```bash
    printf 'GITHUB_APP_PRIVATE_KEY="' > /tmp/github-app-private-key.env
