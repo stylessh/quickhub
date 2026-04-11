@@ -1,5 +1,6 @@
-import { Md } from "@m2d/react-markdown/client";
 import { Suspense, use, useCallback, useRef, useState } from "react";
+import type { Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import type { BundledLanguage, Highlighter } from "shiki";
@@ -151,9 +152,8 @@ function ShikiCode({ code, lang }: { code: string; lang: string }) {
 	);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- component overrides receive union props from @m2d/react-markdown
-const components: Record<string, React.FC<any>> = {
-	h1: ({ node: _, children, ...props }) => (
+const components: Components = {
+	h1: ({ children, ...props }) => (
 		<h1
 			className="text-2xl font-semibold tracking-tight mb-3 mt-5 first:mt-0"
 			{...props}
@@ -161,7 +161,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</h1>
 	),
-	h2: ({ node: _, children, ...props }) => (
+	h2: ({ children, ...props }) => (
 		<h2
 			className="text-xl font-semibold tracking-tight mb-2 mt-4 first:mt-0"
 			{...props}
@@ -169,7 +169,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</h2>
 	),
-	h3: ({ node: _, children, ...props }) => (
+	h3: ({ children, ...props }) => (
 		<h3
 			className="text-lg font-semibold tracking-tight mb-2 mt-3 first:mt-0"
 			{...props}
@@ -177,17 +177,17 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</h3>
 	),
-	h4: ({ node: _, children, ...props }) => (
+	h4: ({ children, ...props }) => (
 		<h4 className="text-base font-semibold mb-1.5 mt-3 first:mt-0" {...props}>
 			{children}
 		</h4>
 	),
-	p: ({ node: _, children, ...props }) => (
+	p: ({ children, ...props }) => (
 		<p className="text-sm leading-relaxed mb-2 last:mb-0" {...props}>
 			{children}
 		</p>
 	),
-	a: ({ node: _, children, href, ...props }) => (
+	a: ({ children, href, ...props }) => (
 		<a
 			href={href}
 			className="text-sm font-medium underline underline-offset-2 decoration-border hover:decoration-foreground transition-colors"
@@ -198,7 +198,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</a>
 	),
-	ul: ({ node: _, children, ...props }) => (
+	ul: ({ children, ...props }) => (
 		<ul
 			className="text-sm list-disc pl-5 mb-2 flex flex-col gap-0.5"
 			{...props}
@@ -206,7 +206,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</ul>
 	),
-	ol: ({ node: _, children, ...props }) => (
+	ol: ({ children, ...props }) => (
 		<ol
 			className="text-sm list-decimal pl-5 mb-2 flex flex-col gap-0.5"
 			{...props}
@@ -214,12 +214,12 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</ol>
 	),
-	li: ({ node: _, children, ...props }) => (
+	li: ({ children, ...props }) => (
 		<li className="text-sm leading-relaxed" {...props}>
 			{children}
 		</li>
 	),
-	blockquote: ({ node: _, children, ...props }) => (
+	blockquote: ({ children, ...props }) => (
 		<blockquote
 			className="border-l-2 border-border pl-3 text-sm text-muted-foreground italic mb-2"
 			{...props}
@@ -227,7 +227,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</blockquote>
 	),
-	code: ({ node: _, children, className, ...props }) => {
+	code: ({ children, className, ...props }) => {
 		const langMatch = className?.match(/language-(\w+)/);
 		if (langMatch) {
 			const code = String(children).replace(/\n$/, "");
@@ -263,29 +263,27 @@ const components: Record<string, React.FC<any>> = {
 			</pre>
 		);
 	},
-	hr: ({ node: _, ...props }) => (
-		<hr className="my-4 border-border" {...props} />
-	),
-	img: ({ node: _, alt, ...props }) => (
+	hr: ({ ...props }) => <hr className="my-4 border-border" {...props} />,
+	img: ({ alt, ...props }) => (
 		<img
 			className="inline-block max-w-full rounded-lg my-2"
 			alt={alt}
 			{...props}
 		/>
 	),
-	table: ({ node: _, children, ...props }) => (
+	table: ({ children, ...props }) => (
 		<div className="overflow-hidden mb-2 rounded-lg border border-border bg-surface-0">
 			<table className="w-full text-sm border-collapse" {...props}>
 				{children}
 			</table>
 		</div>
 	),
-	thead: ({ node: _, children, ...props }) => (
+	thead: ({ children, ...props }) => (
 		<thead className="bg-surface-1" {...props}>
 			{children}
 		</thead>
 	),
-	th: ({ node: _, children, ...props }) => (
+	th: ({ children, ...props }) => (
 		<th
 			className="border-b border-r border-border/50 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground last:border-r-0"
 			{...props}
@@ -293,7 +291,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</th>
 	),
-	td: ({ node: _, children, ...props }) => (
+	td: ({ children, ...props }) => (
 		<td
 			className="border-b border-r border-border/50 px-3 py-1.5 text-xs last:border-r-0 [tr:last-child_&]:border-b-0"
 			{...props}
@@ -301,7 +299,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</td>
 	),
-	input: ({ node: _, type, checked, ...props }) => {
+	input: ({ type, checked, ...props }) => {
 		if (type === "checkbox") {
 			return (
 				<input
@@ -315,22 +313,22 @@ const components: Record<string, React.FC<any>> = {
 		}
 		return <input type={type} {...props} />;
 	},
-	strong: ({ node: _, children, ...props }) => (
+	strong: ({ children, ...props }) => (
 		<strong className="font-semibold" {...props}>
 			{children}
 		</strong>
 	),
-	em: ({ node: _, children, ...props }) => (
+	em: ({ children, ...props }) => (
 		<em className="italic" {...props}>
 			{children}
 		</em>
 	),
-	del: ({ node: _, children, ...props }) => (
+	del: ({ children, ...props }) => (
 		<del className="text-muted-foreground line-through" {...props}>
 			{children}
 		</del>
 	),
-	details: ({ node: _, children, ...props }) => (
+	details: ({ children, ...props }) => (
 		<details
 			className="group/details mb-2 text-sm [&>:not(summary)]:mt-2"
 			{...props}
@@ -338,7 +336,7 @@ const components: Record<string, React.FC<any>> = {
 			{children}
 		</details>
 	),
-	summary: ({ node: _, children, ...props }) => (
+	summary: ({ children, ...props }) => (
 		<summary
 			className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-[13px] font-medium hover:bg-surface-1 [&::-webkit-details-marker]:hidden"
 			{...props}
@@ -369,13 +367,13 @@ export function Markdown({
 }) {
 	return (
 		<div className={cn("text-foreground", className)}>
-			<Md
+			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				rehypePlugins={[rehypeRaw]}
 				components={components}
 			>
 				{children}
-			</Md>
+			</ReactMarkdown>
 		</div>
 	);
 }
