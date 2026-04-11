@@ -652,13 +652,11 @@ function mapPullSearchItems(items: SearchItem[]) {
 				return null;
 			}
 
-			const mergedAt =
-				item.pull_request && "merged_at" in item.pull_request
-					? (item.pull_request.merged_at as string | null)
-					: undefined;
-
 			return mapPullSummary(
-				{ ...item, merged_at: mergedAt ?? null },
+				{
+					...item,
+					merged_at: item.pull_request?.merged_at ?? null,
+				},
 				repository,
 			);
 		})
