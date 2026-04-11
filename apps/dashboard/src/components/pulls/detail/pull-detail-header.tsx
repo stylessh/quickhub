@@ -139,7 +139,7 @@ export function PullDetailHeader({
 					</div>
 				)}
 
-				<div className="flex items-center gap-3 rounded-lg bg-surface-1 px-4 py-2.5 text-sm text-muted-foreground">
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-surface-1 px-4 py-2.5 text-sm text-muted-foreground">
 					<span className="flex items-center gap-1.5">
 						<GitCommitIcon size={15} strokeWidth={2} />
 						<span className="tabular-nums font-medium text-foreground">
@@ -155,26 +155,24 @@ export function PullDetailHeader({
 						</span>{" "}
 						{pr.changedFiles === 1 ? "file" : "files"} changed
 					</span>
-					<span className="ml-auto flex items-center gap-3 text-xs">
-						<span className="flex items-center gap-1.5">
-							<span className="tabular-nums font-medium text-green-500">
-								+{pr.additions}
-							</span>
-							<span className="tabular-nums font-medium text-red-500">
-								-{pr.deletions}
-							</span>
-							<DiffBoxes additions={pr.additions} deletions={pr.deletions} />
+					<span className="flex items-center gap-1.5 text-xs">
+						<span className="tabular-nums font-medium text-green-500">
+							+{pr.additions}
 						</span>
-						{!pr.isMerged && !isReviewRequested && (
-							<Link
-								to="/$owner/$repo/review/$pullId"
-								params={{ owner, repo, pullId }}
-								className="rounded-lg bg-foreground px-3 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90"
-							>
-								Review changes
-							</Link>
-						)}
+						<span className="tabular-nums font-medium text-red-500">
+							-{pr.deletions}
+						</span>
+						<DiffBoxes additions={pr.additions} deletions={pr.deletions} />
 					</span>
+					{!pr.isMerged && !isReviewRequested && (
+						<Link
+							to="/$owner/$repo/review/$pullId"
+							params={{ owner, repo, pullId }}
+							className="md:ml-auto rounded-lg bg-foreground px-3 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90"
+						>
+							Review changes
+						</Link>
+					)}
 				</div>
 			</div>
 		</>

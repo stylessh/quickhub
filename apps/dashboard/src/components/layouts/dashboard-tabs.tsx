@@ -105,7 +105,7 @@ export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 					: "pointer-events-none -translate-y-0.5 opacity-0"
 			}`}
 		>
-			<div className="h-4 shrink-0 border-l border-border/50" />
+			<div className="hidden h-4 shrink-0 border-l border-border/50 md:block" />
 			<div className="relative min-w-0 flex-1 overflow-hidden">
 				<div
 					className={`pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-muted to-transparent transition-opacity ${canScrollLeft ? "opacity-100" : "opacity-0"}`}
@@ -180,6 +180,7 @@ const DetailTab = memo(function DetailTab({
 					#{tab.number}
 				</span>
 			)}
+			{/* Mobile: inline close button in flow — oversized touch target */}
 			<button
 				type="button"
 				onClick={(e) => {
@@ -187,7 +188,24 @@ const DetailTab = memo(function DetailTab({
 					e.stopPropagation();
 					onClose(tab.id, tab.url);
 				}}
-				className="absolute inset-y-0 right-0 flex items-center rounded-r-md bg-surface-1 pl-1.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+				className="-mr-1.5 flex size-8 shrink-0 items-center justify-center rounded-md md:hidden"
+				aria-label={`Close ${tab.title}`}
+			>
+				<CloseIcon
+					size={12}
+					strokeWidth={2}
+					className="text-muted-foreground"
+				/>
+			</button>
+			{/* Desktop: overlay close button on hover */}
+			<button
+				type="button"
+				onClick={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					onClose(tab.id, tab.url);
+				}}
+				className="absolute inset-y-0 right-0 hidden items-center rounded-r-md bg-surface-1 pl-1.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100 md:flex"
 				aria-label={`Close ${tab.title}`}
 			>
 				<span className="absolute inset-y-0 -left-3 w-3 bg-gradient-to-r from-transparent to-surface-1" />

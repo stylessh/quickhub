@@ -3,18 +3,62 @@
 import { XIcon } from "@diffkit/icons";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type * as React from "react";
+import { useSyncExternalStore } from "react";
+import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "../lib/utils";
+
+// ---------------------------------------------------------------------------
+// Mobile detection (shared across all dialog instances)
+// ---------------------------------------------------------------------------
+
+const MD_QUERY = "(min-width: 768px)";
+const subscribe = (cb: () => void) => {
+	const mql = window.matchMedia(MD_QUERY);
+	mql.addEventListener("change", cb);
+	return () => mql.removeEventListener("change", cb);
+};
+const getSnapshot = () => window.matchMedia(MD_QUERY).matches;
+const getServerSnapshot = () => true;
+
+function useIsDesktop() {
+	return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+// ---------------------------------------------------------------------------
+// Dialog — renders as Vaul Drawer on mobile, Radix Dialog on desktop
+// ---------------------------------------------------------------------------
 
 function Dialog({
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return (
+			<DrawerPrimitive.Root
+				data-slot="dialog"
+				open={props.open}
+				onOpenChange={props.onOpenChange}
+				modal={props.modal}
+			>
+				{props.children}
+			</DrawerPrimitive.Root>
+		);
+	}
+
 	return <DialogPrimitive.Root data-slot="dialog" {...props} />;
 }
 
 function DialogTrigger({
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return <DrawerPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
+	}
+
 	return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
 }
 
@@ -27,6 +71,12 @@ function DialogPortal({
 function DialogClose({
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return <DrawerPrimitive.Close data-slot="dialog-close" {...props} />;
+	}
+
 	return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
@@ -51,6 +101,26 @@ function DialogContent({
 	children,
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return (
+			<DrawerPrimitive.Portal data-slot="dialog-portal">
+				<DrawerPrimitive.Overlay
+					data-slot="dialog-overlay"
+					className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px]"
+				/>
+				<DrawerPrimitive.Content
+					data-slot="dialog-content"
+					className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-2xl border border-border/70 bg-popover text-popover-foreground shadow-[0_-24px_80px_-36px_rgba(15,23,42,0.5)]"
+				>
+					<div className="mx-auto mt-3 mb-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/25" />
+					<div className="flex-1 overflow-auto">{children}</div>
+				</DrawerPrimitive.Content>
+			</DrawerPrimitive.Portal>
+		);
+	}
+
 	return (
 		<DialogPortal data-slot="dialog-portal">
 			<DialogOverlay />
@@ -99,6 +169,18 @@ function DialogTitle({
 	className,
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return (
+			<DrawerPrimitive.Title
+				data-slot="dialog-title"
+				className={cn("text-lg font-semibold tracking-tight", className)}
+				{...props}
+			/>
+		);
+	}
+
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
@@ -112,6 +194,18 @@ function DialogDescription({
 	className,
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
+	const isDesktop = useIsDesktop();
+
+	if (!isDesktop) {
+		return (
+			<DrawerPrimitive.Description
+				data-slot="dialog-description"
+				className={cn("text-muted-foreground text-sm/6", className)}
+				{...props}
+			/>
+		);
+	}
+
 	return (
 		<DialogPrimitive.Description
 			data-slot="dialog-description"

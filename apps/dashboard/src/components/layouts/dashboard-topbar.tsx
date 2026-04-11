@@ -159,79 +159,85 @@ export function DashboardTopbar({
 
 	return (
 		<nav className="flex min-w-0 items-center gap-3 overflow-hidden px-3 py-2">
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<button
-						type="button"
-						className="flex size-8 items-center justify-center rounded-full"
-					>
-						<Avatar className="size-7 border border-border">
-							{user.image && !avatarLoadFailed ? (
-								<img
-									src={user.image}
-									alt={displayName}
-									className="size-full object-cover"
-									onError={() => {
-										setAvatarLoadFailed(true);
-									}}
-								/>
-							) : (
-								<AvatarFallback className="text-xs">{initials}</AvatarFallback>
-							)}
-						</Avatar>
-					</button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="start" className="w-56">
-					<DropdownMenuLabel className="flex items-center justify-between">
-						<div>
-							<p>{displayName}</p>
-							<p className="font-normal text-muted-foreground">{user.email}</p>
-						</div>
-						<div className="flex items-center gap-0.5 rounded-md border border-border/50 p-0.5">
-							{themeOptions.map((opt) => (
-								<button
-									key={opt.value}
-									type="button"
-									onClick={() => setTheme(opt.value)}
-									className={`flex size-6 items-center justify-center rounded-sm transition-colors ${
-										theme === opt.value
-											? "bg-surface-1 text-foreground"
-											: "text-muted-foreground hover:text-foreground"
-									}`}
-									title={opt.label}
-								>
-									<opt.icon size={13} strokeWidth={2} />
-								</button>
-							))}
-						</div>
-					</DropdownMenuLabel>
-					<DropdownMenuSeparator />
-					<DropdownMenuGroup>
-						<DropdownMenuItem>
-							Profile
-							<DropdownMenuShortcut keys={["G", "P"]} />
+			<div className="hidden md:block">
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<button
+							type="button"
+							className="flex size-8 items-center justify-center rounded-full"
+						>
+							<Avatar className="size-7 border border-border">
+								{user.image && !avatarLoadFailed ? (
+									<img
+										src={user.image}
+										alt={displayName}
+										className="size-full object-cover"
+										onError={() => {
+											setAvatarLoadFailed(true);
+										}}
+									/>
+								) : (
+									<AvatarFallback className="text-xs">
+										{initials}
+									</AvatarFallback>
+								)}
+							</Avatar>
+						</button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="start" className="w-56">
+						<DropdownMenuLabel className="flex items-center justify-between">
+							<div>
+								<p>{displayName}</p>
+								<p className="font-normal text-muted-foreground">
+									{user.email}
+								</p>
+							</div>
+							<div className="flex items-center gap-0.5 rounded-md border border-border/50 p-0.5">
+								{themeOptions.map((opt) => (
+									<button
+										key={opt.value}
+										type="button"
+										onClick={() => setTheme(opt.value)}
+										className={`flex size-6 items-center justify-center rounded-sm transition-colors ${
+											theme === opt.value
+												? "bg-surface-1 text-foreground"
+												: "text-muted-foreground hover:text-foreground"
+										}`}
+										title={opt.label}
+									>
+										<opt.icon size={13} strokeWidth={2} />
+									</button>
+								))}
+							</div>
+						</DropdownMenuLabel>
+						<DropdownMenuSeparator />
+						<DropdownMenuGroup>
+							<DropdownMenuItem>
+								Profile
+								<DropdownMenuShortcut keys={["G", "P"]} />
+							</DropdownMenuItem>
+							<DropdownMenuItem>
+								Settings
+								<DropdownMenuShortcut keys={["G", "S"]} />
+							</DropdownMenuItem>
+						</DropdownMenuGroup>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							onSelect={() => {
+								void signOutToLogin();
+							}}
+						>
+							Sign out
 						</DropdownMenuItem>
-						<DropdownMenuItem>
-							Settings
-							<DropdownMenuShortcut keys={["G", "S"]} />
-						</DropdownMenuItem>
-					</DropdownMenuGroup>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem
-						onSelect={() => {
-							void signOutToLogin();
-						}}
-					>
-						Sign out
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</div>
 
 			<div
 				aria-hidden={!tabsReady}
-				className={`shrink-0 items-center gap-0.5 transition-[opacity,transform] duration-300 ease-out ${
+				className={`hidden shrink-0 items-center gap-0.5 transition-[opacity,transform] duration-300 ease-out md:flex ${
 					tabsReady
-						? "flex translate-y-0 opacity-100"
+						? "translate-y-0 opacity-100"
 						: "pointer-events-none -translate-y-0.5 opacity-0"
 				}`}
 			>
@@ -270,7 +276,7 @@ export function DashboardTopbar({
 				<DashboardTabs tabsReady={tabsReady} routerRef={routerRef} />
 			</div>
 
-			<div className="shrink-0">
+			<div className="hidden shrink-0 md:block">
 				<Button
 					variant="ghost"
 					size="icon"

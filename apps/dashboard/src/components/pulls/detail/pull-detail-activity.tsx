@@ -1333,7 +1333,7 @@ function ActivityTimeline({
 	if (visibleItems.length === 0 && !pr.isMerged) return null;
 
 	return (
-		<div className="relative flex flex-col pl-8 before:absolute before:left-4 before:top-0 before:h-full before:w-px before:bg-[linear-gradient(to_bottom,var(--color-border)_80%,transparent)]">
+		<div className="relative flex flex-col md:pl-8 md:before:absolute md:before:left-4 md:before:top-0 md:before:h-full md:before:w-px md:before:bg-[linear-gradient(to_bottom,var(--color-border)_80%,transparent)]">
 			{visibleItems.map((item, index) => {
 				const previousType = index > 0 ? visibleItems[index - 1].type : null;
 				const nextType =
