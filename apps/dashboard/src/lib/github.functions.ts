@@ -117,6 +117,7 @@ async function bustPullDetailCaches(userId: string, params: PullCacheParams) {
 		bustGitHubCache(userId, "pulls.detail.raw", params),
 		bustGitHubCache(userId, "pulls.status.raw", params),
 		bustGitHubCache(userId, "pulls.status.v1", params),
+		bustGitHubCache(userId, "pulls.status.v2", params),
 	]);
 }
 
@@ -606,13 +607,7 @@ async function getGitHubContextForOwner(owner: string) {
 	const { installations } = await getGitHubAppUserInstallations(
 		context.session.user.id,
 	);
-	const normalizedOwner = owner.toLowerCase();
-	const installation = installations.find(
-		(candidate) =>
-			candidate.account.login.toLowerCase() === normalizedOwner ||
-			(candidate.targetType === "User" &&
-				candidate.account.login.toLowerCase() === normalizedOwner),
-	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
 	if (!installation) {
 		return context;
 	}
@@ -637,6 +632,54 @@ async function getGitHubContextForRepository(input: {
 	repo: string;
 }) {
 	return getGitHubContextForOwner(input.owner);
+}
+
+function findGitHubAppInstallationForOwner(
+	installations: GitHubAppInstallation[],
+	owner: string,
+) {
+	const normalizedOwner = owner.toLowerCase();
+	return installations.find(
+		(candidate) =>
+			candidate.account.login.toLowerCase() === normalizedOwner ||
+			(candidate.targetType === "User" &&
+				candidate.account.login.toLowerCase() === normalizedOwner),
+	);
+}
+
+async function getGitHubUserContextForOwner(owner: string) {
+	const context = await getGitHubContext();
+	if (!context) {
+		return null;
+	}
+
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	const appUserOctokit = await getGitHubAppUserClientByUserId(
+		context.session.user.id,
+	);
+	if (!appUserOctokit) {
+		return context;
+	}
+
+	const { installations } = await getGitHubAppUserInstallations(
+		context.session.user.id,
+	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
+	if (!installation) {
+		return context;
+	}
+
+	return {
+		...context,
+		octokit: appUserOctokit,
+	};
+}
+
+async function getGitHubUserContextForRepository(input: {
+	owner: string;
+	repo: string;
+}) {
+	return getGitHubUserContextForOwner(input.owner);
 }
 
 function buildUserSearchQuery({
@@ -1360,7 +1403,7 @@ async function computePullStatus(
 	data: PullFromRepoInput,
 	pull: RepoPullDetail,
 ): Promise<PullStatus> {
-	const [reviewsResponse, checksResponse, repoResponse] = await Promise.all([
+	const [reviewsResponse, checksResponse, userContext] = await Promise.all([
 		context.octokit.rest.pulls.listReviews({
 			owner: data.owner,
 			repo: data.repo,
@@ -1375,10 +1418,13 @@ async function computePullStatus(
 				per_page: 100,
 			})
 			.catch(() => null),
-		context.octokit.rest.repos
-			.get({ owner: data.owner, repo: data.repo })
-			.catch(() => null),
+		getGitHubUserContextForRepository(data),
 	]);
+	const repoResponse = await (
+		userContext?.octokit ?? context.octokit
+	).rest.repos
+		.get({ owner: data.owner, repo: data.repo })
+		.catch(() => null);
 
 	const latestReviews = new Map<
 		string,
@@ -1476,7 +1522,7 @@ async function getPullStatusResult(
 
 	return getOrRevalidateGitHubResource<PullStatus>({
 		userId: context.session.user.id,
-		resource: "pulls.status.v1",
+		resource: "pulls.status.v2",
 		params: data,
 		freshForMs: githubCachePolicy.status.staleTimeMs,
 		signalKeys: [pullNamespaceKey],
@@ -2389,7 +2435,7 @@ export type MergePullInput = PullFromRepoInput & {
 export const mergePullRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<MergePullInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContextForRepository(data);
+		const context = await getGitHubUserContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}

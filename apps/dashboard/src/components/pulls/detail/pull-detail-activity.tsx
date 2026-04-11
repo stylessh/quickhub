@@ -843,7 +843,13 @@ function MergeFooter({
 		setIsMerging(true);
 		try {
 			const result = await mergePullRequest({
-				data: { owner, repo, pullNumber, mergeMethod },
+				data: {
+					owner,
+					repo,
+					pullNumber,
+					mergeMethod,
+					bypassProtections: bypassChecks,
+				},
 			});
 			if (result.ok) {
 				await queryClient.invalidateQueries({ queryKey: ["github"] });
