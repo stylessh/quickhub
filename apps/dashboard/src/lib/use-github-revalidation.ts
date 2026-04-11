@@ -54,7 +54,9 @@ async function invalidatePullTabQueries(
 	}
 
 	await Promise.all(
-		queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+		queryKeys.map((queryKey) =>
+			queryClient.invalidateQueries({ queryKey, refetchType: "all" }),
+		),
 	);
 }
 
@@ -79,7 +81,9 @@ async function invalidateIssueTabQueries(
 	}
 
 	await Promise.all(
-		queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+		queryKeys.map((queryKey) =>
+			queryClient.invalidateQueries({ queryKey, refetchType: "all" }),
+		),
 	);
 }
 

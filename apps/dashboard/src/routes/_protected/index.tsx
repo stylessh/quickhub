@@ -1,13 +1,14 @@
 import { GitPullRequestIcon, IssuesIcon, ReviewsIcon } from "@diffkit/icons";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import type { ComponentType } from "react";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { type ComponentType, useEffect } from "react";
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
 import { PullRequestRow } from "#/components/pulls/pull-request-row";
 import {
 	githubMyIssuesQueryOptions,
 	githubMyPullsQueryOptions,
 } from "#/lib/github.query";
+import { preloadRouteOnce } from "#/lib/route-preload";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
 import { useHasMounted } from "#/lib/use-has-mounted";
 
@@ -36,6 +37,7 @@ function OverviewPage() {
 	const { user } = Route.useRouteContext();
 	const scope = { userId: user.id };
 	const hasMounted = useHasMounted();
+	const router = useRouter();
 	const pullsQuery = useQuery({
 		...githubMyPullsQueryOptions(scope),
 		enabled: hasMounted,
@@ -44,6 +46,22 @@ function OverviewPage() {
 		...githubMyIssuesQueryOptions(scope),
 		enabled: hasMounted,
 	});
+
+	// Prefetch detail routes for recent PRs in the background so
+	// navigating into a PR is near-instant even without hovering first.
+	const authoredPulls = pullsQuery.data?.authored;
+	useEffect(() => {
+		if (!authoredPulls) return;
+		const recent = authoredPulls.slice(0, 10);
+		void Promise.allSettled(
+			recent.map((pr) =>
+				preloadRouteOnce(
+					router,
+					`/${pr.repository.owner}/${pr.repository.name}/pull/${pr.number}`,
+				),
+			),
+		);
+	}, [authoredPulls, router]);
 
 	if (pullsQuery.error) throw pullsQuery.error;
 	if (issuesQuery.error) throw issuesQuery.error;
