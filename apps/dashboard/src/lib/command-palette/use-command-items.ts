@@ -5,15 +5,14 @@ import {
 	GitPullRequestDraftIcon,
 	GitPullRequestIcon,
 	IssuesIcon,
-	UserAddIcon,
 } from "@diffkit/icons";
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
+import type { GitHubQueryScope } from "#/lib/github.query";
 import { githubQueryKeys } from "#/lib/github.query";
 import type {
 	CommandPaletteSearchResult,
-	GitHubAccountSummary,
 	IssueSummary,
 	MyIssuesResult,
 	MyPullsResult,
@@ -48,14 +47,6 @@ function getIssueIcon(issue: IssueSummary) {
 	}
 	return { icon: IssuesIcon, iconClassName: "text-green-500" };
 }
-
-function getGitHubAccountGroup(account: GitHubAccountSummary) {
-	return account.type === "Organization"
-		? "GitHub Organizations"
-		: "GitHub Users";
-}
-
-const noopCommandAction = () => {};
 
 const routeApi = getRouteApi("/_protected");
 
@@ -195,45 +186,12 @@ export function getCommandSearchItems(
 
 	const items: CommandItem[] = [];
 
-	for (const repo of result.repositories) {
-		items.push({
-			id: `repo:${repo.id}`,
-			label: repo.fullName,
-			group: "GitHub Repositories",
-			icon: CodeIcon,
-			keywords: [repo.name, repo.owner, repo.language ?? ""].filter(Boolean),
-			action: {
-				type: "execute",
-				fn: noopCommandAction,
-			},
-			meta: {
-				language: repo.language,
-				stars: repo.stars,
-				updatedAt: repo.updatedAt ?? undefined,
-			},
-		});
-	}
-
-	for (const user of result.users) {
-		items.push({
-			id: `github-account:${user.id}`,
-			label: user.login,
-			group: getGitHubAccountGroup(user),
-			icon: UserAddIcon,
-			keywords: [user.login, user.type],
-			action: {
-				type: "execute",
-				fn: noopCommandAction,
-			},
-		});
-	}
-
 	for (const pr of result.pulls) {
 		const prState = getPrIcon(pr);
 		items.push({
 			id: `pull:${pr.id}`,
 			label: `#${pr.number} ${pr.title}`,
-			group: "GitHub Pull Requests",
+			group: "Pull Requests",
 			icon: prState.icon,
 			iconClassName: prState.iconClassName,
 			keywords: [
@@ -243,8 +201,8 @@ export function getCommandSearchItems(
 				String(pr.number),
 			].filter(Boolean),
 			action: {
-				type: "execute",
-				fn: noopCommandAction,
+				type: "navigate",
+				to: `/${pr.repository.owner}/${pr.repository.name}/pull/${pr.number}`,
 			},
 			meta: {
 				repo: pr.repository.fullName,
@@ -259,7 +217,7 @@ export function getCommandSearchItems(
 		items.push({
 			id: `issue:${issue.id}`,
 			label: `#${issue.number} ${issue.title}`,
-			group: "GitHub Issues",
+			group: "Issues",
 			icon: issueState.icon,
 			iconClassName: issueState.iconClassName,
 			keywords: [
@@ -269,8 +227,8 @@ export function getCommandSearchItems(
 				String(issue.number),
 			].filter(Boolean),
 			action: {
-				type: "execute",
-				fn: noopCommandAction,
+				type: "navigate",
+				to: `/${issue.repository.owner}/${issue.repository.name}/issues/${issue.number}`,
 			},
 			meta: {
 				repo: issue.repository.fullName,
@@ -281,4 +239,42 @@ export function getCommandSearchItems(
 	}
 
 	return items;
+}
+
+export function cacheSearchResults(
+	queryClient: QueryClient,
+	scope: GitHubQueryScope,
+	result: CommandPaletteSearchResult,
+) {
+	if (result.pulls.length > 0) {
+		queryClient.setQueryData<MyPullsResult>(
+			githubQueryKeys.pulls.mine(scope),
+			(prev) => {
+				if (!prev) return prev;
+				const existingIds = new Set(prev.involved.map((p) => p.id));
+				const newPulls = result.pulls.filter((p) => !existingIds.has(p.id));
+				if (newPulls.length === 0) return prev;
+				return {
+					...prev,
+					involved: [...prev.involved, ...newPulls],
+				};
+			},
+		);
+	}
+
+	if (result.issues.length > 0) {
+		queryClient.setQueryData<MyIssuesResult>(
+			githubQueryKeys.issues.mine(scope),
+			(prev) => {
+				if (!prev) return prev;
+				const existingIds = new Set(prev.mentioned.map((i) => i.id));
+				const newIssues = result.issues.filter((i) => !existingIds.has(i.id));
+				if (newIssues.length === 0) return prev;
+				return {
+					...prev,
+					mentioned: [...prev.mentioned, ...newIssues],
+				};
+			},
+		);
+	}
 }

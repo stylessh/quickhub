@@ -122,8 +122,6 @@ export type MyIssuesResult = {
 };
 
 export type CommandPaletteSearchResult = {
-	repositories: UserRepoSummary[];
-	users: GitHubAccountSummary[];
 	pulls: PullSummary[];
 	issues: IssueSummary[];
 };

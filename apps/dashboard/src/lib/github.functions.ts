@@ -4,7 +4,6 @@ import type {
 	CommandPaletteSearchResult,
 	CreateLabelInput,
 	CreateReviewCommentInput,
-	GitHubAccountSummary,
 	GitHubActor,
 	GitHubLabel,
 	IssueComment,
@@ -80,12 +79,6 @@ type SearchItem = Awaited<
 type SearchResult = Awaited<
 	ReturnType<GitHubClient["rest"]["search"]["issuesAndPullRequests"]>
 >["data"];
-type RepositorySearchItem = Awaited<
-	ReturnType<GitHubClient["rest"]["search"]["repos"]>
->["data"]["items"][number];
-type UserSearchItem = Awaited<
-	ReturnType<GitHubClient["rest"]["search"]["users"]>
->["data"]["items"][number];
 type AuthenticatedUserRepo = Awaited<
 	ReturnType<GitHubClient["rest"]["repos"]["listForAuthenticatedUser"]>
 >["data"][number];
@@ -406,8 +399,6 @@ function normalizeCommandPaletteSearchQuery(query: string) {
 
 function emptyCommandPaletteSearchResult(): CommandPaletteSearchResult {
 	return {
-		repositories: [],
-		users: [],
 		pulls: [],
 		issues: [],
 	};
@@ -455,42 +446,6 @@ function mapActor(user: GitHubApiUser | null | undefined): GitHubActor | null {
 		avatarUrl: user.avatar_url ?? "",
 		url: user.html_url ?? `https://github.com/${user.login}`,
 		type: user.type ?? "User",
-	};
-}
-
-function mapGitHubAccountSearchItem(
-	user: UserSearchItem,
-): GitHubAccountSummary | null {
-	if (!user.login) {
-		return null;
-	}
-
-	return {
-		id: user.id,
-		login: user.login,
-		avatarUrl: user.avatar_url ?? "",
-		url: user.html_url ?? `https://github.com/${user.login}`,
-		type: user.type ?? "User",
-	};
-}
-
-function mapRepositorySearchItem(repo: RepositorySearchItem): UserRepoSummary {
-	const ownerLogin = repo.owner?.login ?? "";
-	const fullName =
-		repo.full_name ?? [ownerLogin, repo.name].filter(Boolean).join("/");
-	const fallbackOwner = fullName.split("/")[0] ?? "";
-
-	return {
-		id: repo.id,
-		name: repo.name,
-		fullName,
-		description: repo.description ?? null,
-		stars: repo.stargazers_count ?? 0,
-		language: repo.language ?? null,
-		updatedAt: repo.updated_at ?? null,
-		isPrivate: repo.private ?? false,
-		url: repo.html_url ?? `https://github.com/${fullName}`,
-		owner: ownerLogin || fallbackOwner,
 	};
 }
 
@@ -697,7 +652,15 @@ function mapPullSearchItems(items: SearchItem[]) {
 				return null;
 			}
 
-			return mapPullSummary(item, repository);
+			const mergedAt =
+				item.pull_request && "merged_at" in item.pull_request
+					? (item.pull_request.merged_at as string | null)
+					: undefined;
+
+			return mapPullSummary(
+				{ ...item, merged_at: mergedAt ?? null },
+				repository,
+			);
 		})
 		.filter((item): item is PullSummary => Boolean(item));
 }
@@ -2784,41 +2747,18 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 			return emptyCommandPaletteSearchResult();
 		}
 
+		const viewer = await getViewer(context);
+		const login = viewer.login;
+
 		const perPage = clampCommandSearchPerPage(data.perPage);
-		const [repositories, users, pullItems, issueItems] = await Promise.all([
-			safeCommandPaletteSearch({
-				label: "repositories",
-				fallback: [] as UserRepoSummary[],
-				task: async () => {
-					const response = await context.octokit.rest.search.repos({
-						q: `${query} in:name,description fork:true`,
-						per_page: perPage,
-						sort: "updated",
-						order: "desc",
-					});
-					return response.data.items.map(mapRepositorySearchItem);
-				},
-			}),
-			safeCommandPaletteSearch({
-				label: "users",
-				fallback: [] as GitHubAccountSummary[],
-				task: async () => {
-					const response = await context.octokit.rest.search.users({
-						q: `${query} in:login,fullname`,
-						per_page: perPage,
-					});
-					return response.data.items
-						.map((user) => mapGitHubAccountSearchItem(user))
-						.filter((user): user is GitHubAccountSummary => Boolean(user));
-				},
-			}),
+		const [pullItems, issueItems] = await Promise.all([
 			safeCommandPaletteSearch({
 				label: "pull requests",
 				fallback: [] as SearchItem[],
 				task: async () => {
 					const response =
 						await context.octokit.rest.search.issuesAndPullRequests({
-							q: `${query} is:pr in:title,body archived:false`,
+							q: `${query} is:pr involves:${login} archived:false`,
 							per_page: perPage,
 							sort: "updated",
 							order: "desc",
@@ -2832,7 +2772,7 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 				task: async () => {
 					const response =
 						await context.octokit.rest.search.issuesAndPullRequests({
-							q: `${query} is:issue in:title,body archived:false`,
+							q: `${query} is:issue involves:${login} archived:false`,
 							per_page: perPage,
 							sort: "updated",
 							order: "desc",
@@ -2843,8 +2783,6 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 		]);
 
 		return {
-			repositories,
-			users,
 			pulls: mapPullSearchItems(pullItems),
 			issues: mapIssueSearchItems(issueItems),
 		};

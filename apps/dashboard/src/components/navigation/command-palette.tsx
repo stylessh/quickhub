@@ -9,11 +9,12 @@ import {
 	CommandShortcut,
 } from "@diffkit/ui/components/command";
 import { cn } from "@diffkit/ui/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommandItem, CommandItemMeta } from "#/lib/command-palette/types";
 import {
+	cacheSearchResults,
 	getCommandSearchItems,
 	useCommandItems,
 } from "#/lib/command-palette/use-command-items";
@@ -26,7 +27,9 @@ const routeApi = getRouteApi("/_protected");
 export function CommandPalette() {
 	const { open, setOpen, close } = useCommandPalette();
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const { user } = routeApi.useRouteContext();
+	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
 	const [search, setSearch] = useState("");
 	const debouncedSearch = useDebouncedValue(search, 250);
 	const trimmedDebouncedSearch = debouncedSearch.trim();
@@ -47,6 +50,14 @@ export function CommandPalette() {
 		() => mergeCommandItems(items, searchItems),
 		[items, searchItems],
 	);
+
+	const cachedSearchDataRef = useRef(githubSearchQuery.data);
+	useEffect(() => {
+		const data = githubSearchQuery.data;
+		if (!data || data === cachedSearchDataRef.current) return;
+		cachedSearchDataRef.current = data;
+		cacheSearchResults(queryClient, scope, data);
+	}, [githubSearchQuery.data, queryClient, scope]);
 
 	const groups = new Map<string, CommandItem[]>();
 	for (const item of allItems) {
