@@ -32,7 +32,7 @@ export const IssueRow = memo(function IssueRow({
 				<IssuesIcon size={16} strokeWidth={2} />
 			</div>
 			<div className="min-w-0 flex-1 flex flex-col gap-1">
-				<p className="truncate text-sm font-medium">{issue.title}</p>
+				<p className="text-sm font-medium md:truncate">{issue.title}</p>
 				<p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
 					{issue.repository.fullName} #{issue.number}
 					{issue.author && (

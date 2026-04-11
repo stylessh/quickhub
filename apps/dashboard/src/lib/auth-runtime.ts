@@ -9,13 +9,14 @@ import { Octokit } from "octokit";
 import * as schema from "../db/schema";
 import {
 	getGitHubAccessTokenByUserId,
-	getGitHubAppAuthConfig,
+	getGitHubAppUserAccessTokenByUserId,
+	getGitHubOAuthConfig,
 } from "./github-app.server";
 
 const authDb = drizzle(env.DB, { schema });
 
 function createAuth() {
-	const github = getGitHubAppAuthConfig();
+	const github = getGitHubOAuthConfig();
 
 	return betterAuth({
 		baseURL: env.BETTER_AUTH_URL,
@@ -27,6 +28,7 @@ function createAuth() {
 			github: {
 				clientId: github.clientId,
 				clientSecret: github.clientSecret,
+				scope: ["repo", "read:org", "user:email"],
 			},
 		},
 		plugins: [tanstackStartCookies()],
@@ -52,6 +54,21 @@ export async function getGitHubClientByUserId(
 ): Promise<OctokitType> {
 	return new Octokit({
 		auth: await getGitHubAccessTokenByUserId(userId),
+		retry: { enabled: false },
+		throttle: { enabled: false },
+	});
+}
+
+export async function getGitHubAppUserClientByUserId(
+	userId: string,
+): Promise<OctokitType | null> {
+	const token = await getGitHubAppUserAccessTokenByUserId(userId);
+	if (!token) {
+		return null;
+	}
+
+	return new Octokit({
+		auth: token,
 		retry: { enabled: false },
 		throttle: { enabled: false },
 	});

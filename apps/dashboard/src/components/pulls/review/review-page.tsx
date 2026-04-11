@@ -1,4 +1,14 @@
-import { FileIcon, GitPullRequestIcon, SearchIcon } from "@diffkit/icons";
+import {
+	FileIcon,
+	GitPullRequestIcon,
+	PanelLeftIcon,
+	SearchIcon,
+} from "@diffkit/icons";
+import {
+	Drawer,
+	DrawerContent,
+	DrawerTitle,
+} from "@diffkit/ui/components/drawer";
 import {
 	ResizableHandle,
 	ResizablePanel,
@@ -22,6 +32,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from "react";
 import { getPrStateConfig } from "#/components/pulls/detail/pull-detail-header";
 import { getPullFiles, submitPullReview } from "#/lib/github.functions";
@@ -60,6 +71,19 @@ const ReviewDiffPane = lazy(() =>
 		default: mod.ReviewDiffPane,
 	})),
 );
+
+const MD_QUERY = "(min-width: 768px)";
+const mdSubscribe = (cb: () => void) => {
+	const mql = window.matchMedia(MD_QUERY);
+	mql.addEventListener("change", cb);
+	return () => mql.removeEventListener("change", cb);
+};
+const getMdSnapshot = () => window.matchMedia(MD_QUERY).matches;
+const getMdServerSnapshot = () => true;
+
+function useIsDesktop() {
+	return useSyncExternalStore(mdSubscribe, getMdSnapshot, getMdServerSnapshot);
+}
 
 export function ReviewPage() {
 	const { user } = routeApi.useRouteContext();
@@ -135,6 +159,8 @@ export function ReviewPage() {
 		null,
 	);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [fileSheetOpen, setFileSheetOpen] = useState(false);
+	const isDesktop = useIsDesktop();
 
 	useRegisterTab(
 		pr
@@ -163,6 +189,7 @@ export function ReviewPage() {
 		(filename: string) => {
 			diffPaneRef.current?.scrollToFile(filename);
 			activeFileStore.set(filename);
+			setFileSheetOpen(false);
 		},
 		[activeFileStore],
 	);
@@ -314,6 +341,30 @@ export function ReviewPage() {
 
 	const sidebarFileCount = sidebarFiles.length;
 
+	const diffContent = hasDiffPayload ? (
+		<Suspense fallback={<ReviewDiffPanePlaceholder />}>
+			<ReviewDiffPane
+				ref={diffPaneRef}
+				files={diffFiles}
+				totalFileCount={sidebarFileCount}
+				diffStyle={diffStyle}
+				annotationsByFile={annotationsByFile}
+				pendingCommentsByFile={pendingCommentsByFile}
+				hasNextPage={filesQuery.hasNextPage}
+				isFetchingNextPage={filesQuery.isFetchingNextPage}
+				onLoadMore={handleLoadMore}
+				activeCommentForm={activeCommentForm}
+				selectedLines={selectedLines}
+				onActiveFileChange={handleActiveFileChange}
+				onStartComment={handleStartComment}
+				onCancelComment={handleCancelComment}
+				onAddComment={handleAddComment}
+			/>
+		</Suspense>
+	) : (
+		<ReviewDiffPanePlaceholder />
+	);
+
 	return (
 		<div className="flex h-full flex-col">
 			<ReviewToolbar
@@ -328,46 +379,41 @@ export function ReviewPage() {
 				pendingCount={pendingComments.length}
 				isSubmitting={isSubmitting}
 				onSubmitReview={handleSubmitReview}
+				onOpenFileSheet={() => setFileSheetOpen(true)}
+				isDesktop={isDesktop}
 			/>
 
-			<ResizablePanelGroup direction="horizontal" className="flex-1">
-				<ResizablePanel defaultSize={20} minSize={12} maxSize={40}>
-					<ReviewSidebar
-						sidebarFiles={sidebarFiles}
-						sidebarFileCount={sidebarFileCount}
-						activeFileStore={activeFileStore}
-						onFileClick={scrollToFile}
-					/>
-				</ResizablePanel>
+			{isDesktop ? (
+				<ResizablePanelGroup direction="horizontal" className="flex-1">
+					<ResizablePanel defaultSize={20} minSize={12} maxSize={40}>
+						<ReviewSidebar
+							sidebarFiles={sidebarFiles}
+							sidebarFileCount={sidebarFileCount}
+							activeFileStore={activeFileStore}
+							onFileClick={scrollToFile}
+						/>
+					</ResizablePanel>
 
-				<ResizableHandle />
+					<ResizableHandle />
 
-				<ResizablePanel defaultSize={80}>
-					{hasDiffPayload ? (
-						<Suspense fallback={<ReviewDiffPanePlaceholder />}>
-							<ReviewDiffPane
-								ref={diffPaneRef}
-								files={diffFiles}
-								totalFileCount={sidebarFileCount}
-								diffStyle={diffStyle}
-								annotationsByFile={annotationsByFile}
-								pendingCommentsByFile={pendingCommentsByFile}
-								hasNextPage={filesQuery.hasNextPage}
-								isFetchingNextPage={filesQuery.isFetchingNextPage}
-								onLoadMore={handleLoadMore}
-								activeCommentForm={activeCommentForm}
-								selectedLines={selectedLines}
-								onActiveFileChange={handleActiveFileChange}
-								onStartComment={handleStartComment}
-								onCancelComment={handleCancelComment}
-								onAddComment={handleAddComment}
+					<ResizablePanel defaultSize={80}>{diffContent}</ResizablePanel>
+				</ResizablePanelGroup>
+			) : (
+				<>
+					<div className="flex-1 overflow-hidden">{diffContent}</div>
+					<Drawer open={fileSheetOpen} onOpenChange={setFileSheetOpen}>
+						<DrawerContent className="max-h-[70dvh]">
+							<DrawerTitle className="sr-only">Files</DrawerTitle>
+							<ReviewSidebar
+								sidebarFiles={sidebarFiles}
+								sidebarFileCount={sidebarFileCount}
+								activeFileStore={activeFileStore}
+								onFileClick={scrollToFile}
 							/>
-						</Suspense>
-					) : (
-						<ReviewDiffPanePlaceholder />
-					)}
-				</ResizablePanel>
-			</ResizablePanelGroup>
+						</DrawerContent>
+					</Drawer>
+				</>
+			)}
 		</div>
 	);
 }
@@ -388,6 +434,8 @@ const ReviewToolbar = memo(function ReviewToolbar({
 	pendingCount,
 	isSubmitting,
 	onSubmitReview,
+	onOpenFileSheet,
+	isDesktop,
 }: {
 	owner: string;
 	repo: string;
@@ -400,38 +448,54 @@ const ReviewToolbar = memo(function ReviewToolbar({
 	pendingCount: number;
 	isSubmitting: boolean;
 	onSubmitReview: (body: string, event: ReviewEvent) => Promise<void>;
+	onOpenFileSheet: () => void;
+	isDesktop: boolean;
 }) {
 	const stateConfig = getPrStateConfig(pr);
 	const StateIcon = stateConfig.icon;
 
 	return (
-		<div className="flex shrink-0 items-center gap-3 border-b bg-surface-0 px-4 py-2">
+		<div className="flex shrink-0 items-center gap-2 border-b bg-surface-0 px-3 py-2 md:gap-3 md:px-4">
+			{!isDesktop && (
+				<button
+					type="button"
+					onClick={onOpenFileSheet}
+					className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground"
+					aria-label="Open file tree"
+				>
+					<PanelLeftIcon size={16} strokeWidth={2} />
+				</button>
+			)}
+
 			<Link
 				to="/$owner/$repo/pull/$pullId"
 				params={{ owner, repo, pullId }}
-				className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+				className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
 			>
 				<GitPullRequestIcon size={14} strokeWidth={2} />
 				<span>#{pr.number}</span>
 			</Link>
 
-			<div className="mx-1 h-4 w-px bg-border" />
+			<div className="hidden mx-1 h-4 w-px bg-border md:block" />
 
-			<div className="flex min-w-0 items-center gap-2">
+			<div className="hidden min-w-0 items-center gap-2 md:flex">
 				<div className={cn("shrink-0", stateConfig.color)}>
 					<StateIcon size={14} strokeWidth={2} />
 				</div>
 				<span className="truncate text-sm font-medium">{pr.title}</span>
 			</div>
 
-			<div className="ml-auto flex items-center gap-3">
+			<div className="ml-auto flex items-center gap-2 md:gap-3">
 				<div className="flex items-center gap-2 text-xs text-muted-foreground">
 					<span className="flex items-center gap-1">
 						<FileIcon size={13} strokeWidth={2} />
 						<span className="font-mono tabular-nums font-medium text-foreground">
 							{sidebarFileCount}
-						</span>{" "}
-						{sidebarFileCount === 1 ? "file" : "files"}
+						</span>
+						<span className="hidden md:inline">
+							{" "}
+							{sidebarFileCount === 1 ? "file" : "files"}
+						</span>
 					</span>
 					<span className="font-mono tabular-nums font-medium text-green-500">
 						+{diffStats.totalAdditions}
@@ -443,7 +507,7 @@ const ReviewToolbar = memo(function ReviewToolbar({
 
 				<div className="h-4 w-px bg-border" />
 
-				<div className="flex items-center rounded-md border bg-surface-1">
+				<div className="hidden items-center rounded-md border bg-surface-1 md:flex">
 					<button
 						type="button"
 						className={cn(
@@ -470,7 +534,7 @@ const ReviewToolbar = memo(function ReviewToolbar({
 					</button>
 				</div>
 
-				<div className="h-4 w-px bg-border" />
+				<div className="hidden h-4 w-px bg-border md:block" />
 
 				<ReviewSubmitPopover
 					pendingCount={pendingCount}

@@ -17,7 +17,7 @@ export function DetailPageLayout({
 }) {
 	return (
 		<div className="h-full overflow-auto">
-			<div className="mx-auto grid max-w-7xl gap-16 px-6 py-10 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
+			<div className="mx-auto grid max-w-7xl gap-16 px-3 py-10 md:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
 				<div className="flex min-w-0 flex-col gap-8">{main}</div>
 				{sidebar}
 			</div>
@@ -85,7 +85,7 @@ export function DetailPageSkeletonLayout({
 }) {
 	return (
 		<div className="h-full overflow-auto">
-			<div className="mx-auto grid max-w-7xl gap-16 px-6 py-10 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
+			<div className="mx-auto grid max-w-7xl gap-16 px-3 py-10 md:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
 				<div className="flex min-w-0 flex-col gap-8">{main}</div>
 				<aside className="flex h-fit flex-col gap-6 xl:sticky xl:top-10">
 					{Array.from(

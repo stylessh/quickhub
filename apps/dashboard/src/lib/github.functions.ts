@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { type Octokit as OctokitType, RequestError } from "octokit";
 import type {
+	CommandPaletteSearchResult,
 	CreateLabelInput,
 	CreateReviewCommentInput,
+	GitHubAccountSummary,
 	GitHubActor,
 	GitHubLabel,
 	IssueComment,
@@ -28,9 +30,11 @@ import type {
 	RequestReviewersInput,
 	SetLabelsInput,
 	SubmitReviewInput,
+	TimelineEvent,
 	UserRepoSummary,
 } from "./github.types";
 import {
+	buildGitHubAppAuthorizePath,
 	buildGitHubAppInstallUrl,
 	type GitHubAppAccessState,
 	type GitHubAppInstallation,
@@ -76,6 +80,12 @@ type SearchItem = Awaited<
 type SearchResult = Awaited<
 	ReturnType<GitHubClient["rest"]["search"]["issuesAndPullRequests"]>
 >["data"];
+type RepositorySearchItem = Awaited<
+	ReturnType<GitHubClient["rest"]["search"]["repos"]>
+>["data"]["items"][number];
+type UserSearchItem = Awaited<
+	ReturnType<GitHubClient["rest"]["search"]["users"]>
+>["data"]["items"][number];
 type AuthenticatedUserRepo = Awaited<
 	ReturnType<GitHubClient["rest"]["repos"]["listForAuthenticatedUser"]>
 >["data"][number];
@@ -94,6 +104,41 @@ type RepoPullFile = Awaited<
 type RepoPullReviewComment = Awaited<
 	ReturnType<GitHubClient["rest"]["pulls"]["listReviewComments"]>
 >["data"][number];
+type RepositoryPermissions = {
+	admin?: boolean;
+	maintain?: boolean;
+	push?: boolean;
+	triage?: boolean;
+	pull?: boolean;
+};
+type GitHubBranchRule = {
+	ruleset_id?: number;
+};
+type GitHubRepositoryRuleset = {
+	current_user_can_bypass?:
+		| "always"
+		| "pull_requests_only"
+		| "never"
+		| "exempt";
+};
+type GitHubBranchProtection = {
+	enforce_admins?: {
+		enabled?: boolean;
+	};
+	required_pull_request_reviews?: {
+		bypass_pull_request_allowances?: {
+			users?: Array<{ login?: string }>;
+			teams?: Array<{ slug?: string }>;
+			apps?: Array<{ slug?: string }>;
+		};
+	};
+};
+type GitHubUserTeam = {
+	slug?: string;
+	organization?: {
+		login?: string;
+	};
+};
 
 type RepoState = "all" | "closed" | "open";
 type PullSort = "created" | "long-running" | "popularity" | "updated";
@@ -115,6 +160,8 @@ async function bustPullDetailCaches(userId: string, params: PullCacheParams) {
 		bustGitHubCache(userId, "pulls.detail.raw", params),
 		bustGitHubCache(userId, "pulls.status.raw", params),
 		bustGitHubCache(userId, "pulls.status.v1", params),
+		bustGitHubCache(userId, "pulls.status.v2", params),
+		bustGitHubCache(userId, "pulls.status.v3", params),
 	]);
 }
 
@@ -140,6 +187,7 @@ type GitHubApiLabel = {
 };
 
 type GitHubInstallationAccountPayload = {
+	id?: number;
 	login?: string;
 	avatar_url?: string | null;
 	type?: string;
@@ -307,6 +355,11 @@ export type IssueFromRepoInput = {
 	issueNumber: number;
 };
 
+export type CommandPaletteSearchInput = {
+	query: string;
+	perPage?: number;
+};
+
 const myPullRoleDefinitions = [
 	{ key: "reviewRequested", role: "review-requested" },
 	{ key: "assigned", role: "assigned" },
@@ -341,6 +394,23 @@ function clampPage(value: number | undefined) {
 	}
 
 	return Math.max(Math.trunc(value ?? 1), 1);
+}
+
+function clampCommandSearchPerPage(value: number | undefined) {
+	return Math.min(clampPerPage(value, 5), 10);
+}
+
+function normalizeCommandPaletteSearchQuery(query: string) {
+	return query.trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function emptyCommandPaletteSearchResult(): CommandPaletteSearchResult {
+	return {
+		repositories: [],
+		users: [],
+		pulls: [],
+		issues: [],
+	};
 }
 
 function buildRepositoryRef(
@@ -385,6 +455,42 @@ function mapActor(user: GitHubApiUser | null | undefined): GitHubActor | null {
 		avatarUrl: user.avatar_url ?? "",
 		url: user.html_url ?? `https://github.com/${user.login}`,
 		type: user.type ?? "User",
+	};
+}
+
+function mapGitHubAccountSearchItem(
+	user: UserSearchItem,
+): GitHubAccountSummary | null {
+	if (!user.login) {
+		return null;
+	}
+
+	return {
+		id: user.id,
+		login: user.login,
+		avatarUrl: user.avatar_url ?? "",
+		url: user.html_url ?? `https://github.com/${user.login}`,
+		type: user.type ?? "User",
+	};
+}
+
+function mapRepositorySearchItem(repo: RepositorySearchItem): UserRepoSummary {
+	const ownerLogin = repo.owner?.login ?? "";
+	const fullName =
+		repo.full_name ?? [ownerLogin, repo.name].filter(Boolean).join("/");
+	const fallbackOwner = fullName.split("/")[0] ?? "";
+
+	return {
+		id: repo.id,
+		name: repo.name,
+		fullName,
+		description: repo.description ?? null,
+		stars: repo.stargazers_count ?? 0,
+		language: repo.language ?? null,
+		updatedAt: repo.updated_at ?? null,
+		isPrivate: repo.private ?? false,
+		url: repo.html_url ?? `https://github.com/${fullName}`,
+		owner: ownerLogin || fallbackOwner,
 	};
 }
 
@@ -609,6 +715,23 @@ function mapIssueSearchItems(items: SearchItem[]) {
 		.filter((item): item is IssueSummary => Boolean(item));
 }
 
+async function safeCommandPaletteSearch<T>({
+	fallback,
+	label,
+	task,
+}: {
+	fallback: T;
+	label: string;
+	task: () => Promise<T>;
+}) {
+	try {
+		return await task();
+	} catch (error) {
+		console.error(`[github-command-search] failed to search ${label}`, error);
+		return fallback;
+	}
+}
+
 async function getGitHubContext(): Promise<GitHubContext | null> {
 	const { getGitHubClientByUserId, getRequestSession } = await import(
 		"./auth-runtime"
@@ -622,6 +745,419 @@ async function getGitHubContext(): Promise<GitHubContext | null> {
 		session,
 		octokit: await getGitHubClientByUserId(session.user.id),
 	};
+}
+
+function toRepositorySelection(value: string | undefined) {
+	return value === "all" || value === "selected" ? value : "unknown";
+}
+
+function mapGitHubAppInstallations(
+	payload: GitHubUserInstallationsPayload,
+): GitHubAppInstallation[] {
+	return (payload.installations ?? []).flatMap((installation) => {
+		if (!installation.id || !installation.account?.login) {
+			return [];
+		}
+
+		const targetType = toInstallationTargetType(installation.target_type);
+
+		return [
+			{
+				id: installation.id,
+				account: {
+					id: installation.account.id ?? null,
+					login: installation.account.login,
+					name: null,
+					avatarUrl: installation.account.avatar_url ?? null,
+					type: toInstallationTargetType(installation.account.type),
+				},
+				targetType,
+				repositorySelection: toRepositorySelection(
+					installation.repository_selection,
+				),
+				manageUrl: installation.html_url ?? null,
+				suspendedAt: installation.suspended_at ?? null,
+			},
+		];
+	});
+}
+
+async function getGitHubAppUserInstallations(userId: string): Promise<{
+	installations: GitHubAppInstallation[];
+	installationsAvailable: boolean;
+}> {
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	const appUserOctokit = await getGitHubAppUserClientByUserId(userId);
+	if (!appUserOctokit) {
+		return { installations: [], installationsAvailable: false };
+	}
+
+	try {
+		const installationsResponse = await appUserOctokit.request(
+			"GET /user/installations",
+			{
+				per_page: 100,
+			},
+		);
+		return {
+			installations: mapGitHubAppInstallations(
+				installationsResponse.data as GitHubUserInstallationsPayload,
+			),
+			installationsAvailable: true,
+		};
+	} catch (error) {
+		console.error("[github-access] failed to load app installations", error);
+		return { installations: [], installationsAvailable: false };
+	}
+}
+
+async function getGitHubContextForOwner(owner: string) {
+	const context = await getGitHubContext();
+	if (!context) {
+		return null;
+	}
+
+	const { installations } = await getGitHubAppUserInstallations(
+		context.session.user.id,
+	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
+	if (!installation) {
+		return context;
+	}
+
+	try {
+		const { getGitHubInstallationClient } = await import("./github.server");
+		return {
+			...context,
+			octokit: await getGitHubInstallationClient(installation.id),
+		};
+	} catch (error) {
+		console.error(
+			"[github-access] failed to create installation client",
+			error,
+		);
+		return context;
+	}
+}
+
+async function getGitHubContextForRepository(input: {
+	owner: string;
+	repo: string;
+}) {
+	return getGitHubContextForOwner(input.owner);
+}
+
+function findGitHubAppInstallationForOwner(
+	installations: GitHubAppInstallation[],
+	owner: string,
+) {
+	const normalizedOwner = owner.toLowerCase();
+	return installations.find(
+		(candidate) =>
+			candidate.account.login.toLowerCase() === normalizedOwner ||
+			(candidate.targetType === "User" &&
+				candidate.account.login.toLowerCase() === normalizedOwner),
+	);
+}
+
+async function getGitHubUserContextForOwner(owner: string) {
+	const context = await getGitHubContext();
+	if (!context) {
+		return null;
+	}
+
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	const appUserOctokit = await getGitHubAppUserClientByUserId(
+		context.session.user.id,
+	);
+	if (!appUserOctokit) {
+		return context;
+	}
+
+	const { installations } = await getGitHubAppUserInstallations(
+		context.session.user.id,
+	);
+	const installation = findGitHubAppInstallationForOwner(installations, owner);
+	if (!installation) {
+		return context;
+	}
+
+	return {
+		...context,
+		octokit: appUserOctokit,
+	};
+}
+
+async function getGitHubUserContextForRepository(input: {
+	owner: string;
+	repo: string;
+}) {
+	return getGitHubUserContextForOwner(input.owner);
+}
+
+function isBypassableRulesetMode(
+	mode: GitHubRepositoryRuleset["current_user_can_bypass"] | undefined,
+) {
+	return (
+		mode === "always" || mode === "pull_requests_only" || mode === "exempt"
+	);
+}
+
+function mergeRepositoryPermissions(
+	...permissionsList: Array<RepositoryPermissions | null | undefined>
+): RepositoryPermissions | undefined {
+	const permissions = permissionsList.filter(
+		(candidate): candidate is RepositoryPermissions => Boolean(candidate),
+	);
+	if (permissions.length === 0) {
+		return undefined;
+	}
+
+	return {
+		admin: permissions.some((permission) => permission.admin === true),
+		maintain: permissions.some((permission) => permission.maintain === true),
+		push: permissions.some((permission) => permission.push === true),
+		triage: permissions.some((permission) => permission.triage === true),
+		pull: permissions.some((permission) => permission.pull === true),
+	};
+}
+
+async function getRepositoryPermissions(
+	context: GitHubContext | null,
+	owner: string,
+	repo: string,
+) {
+	if (!context) {
+		return null;
+	}
+
+	const response = await context.octokit.rest.repos
+		.get({ owner, repo })
+		.catch(() => null);
+	return response?.data.permissions ?? null;
+}
+
+async function getRulesetPullRequestBypassState({
+	branch,
+	context,
+	owner,
+	repo,
+}: {
+	branch: string;
+	context: GitHubContext;
+	owner: string;
+	repo: string;
+}) {
+	try {
+		const rulesResponse = await context.octokit.request(
+			"GET /repos/{owner}/{repo}/rules/branches/{branch}",
+			{
+				owner,
+				repo,
+				branch,
+				per_page: 100,
+			},
+		);
+		const rules = rulesResponse.data as GitHubBranchRule[];
+		const rulesetIds = Array.from(
+			new Set(
+				rules
+					.map((rule) => rule.ruleset_id)
+					.filter((id): id is number => typeof id === "number"),
+			),
+		);
+
+		if (rulesetIds.length === 0) {
+			return null;
+		}
+
+		const rulesets = await Promise.all(
+			rulesetIds.map(async (rulesetId) => {
+				const response = await context.octokit.request(
+					"GET /repos/{owner}/{repo}/rulesets/{ruleset_id}",
+					{
+						owner,
+						repo,
+						ruleset_id: rulesetId,
+						includes_parents: true,
+					},
+				);
+				return response.data as GitHubRepositoryRuleset;
+			}),
+		);
+
+		if (
+			rulesets.some((ruleset) => ruleset.current_user_can_bypass === "never")
+		) {
+			return false;
+		}
+
+		if (
+			rulesets.every((ruleset) =>
+				isBypassableRulesetMode(ruleset.current_user_can_bypass),
+			)
+		) {
+			return true;
+		}
+
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function loginMatches(left: string | undefined, right: string) {
+	return left?.toLowerCase() === right.toLowerCase();
+}
+
+async function getAuthenticatedUserTeamSlugsForOrg(
+	context: GitHubContext,
+	org: string,
+) {
+	const teamSlugs = new Set<string>();
+	let page = 1;
+
+	while (true) {
+		const response = await context.octokit.request("GET /user/teams", {
+			page,
+			per_page: 100,
+		});
+		const teams = response.data as GitHubUserTeam[];
+		for (const team of teams) {
+			if (loginMatches(team.organization?.login, org) && team.slug) {
+				teamSlugs.add(team.slug.toLowerCase());
+			}
+		}
+
+		if (teams.length < 100) {
+			break;
+		}
+
+		page += 1;
+	}
+
+	return teamSlugs;
+}
+
+async function legacyBranchProtectionAllowsPullRequestBypass({
+	branch,
+	context,
+	owner,
+	permissions,
+	repo,
+	viewerLogin,
+}: {
+	branch: string;
+	context: GitHubContext;
+	owner: string;
+	permissions: RepositoryPermissions | undefined;
+	repo: string;
+	viewerLogin: string;
+}) {
+	try {
+		const response = await context.octokit.request(
+			"GET /repos/{owner}/{repo}/branches/{branch}/protection",
+			{
+				owner,
+				repo,
+				branch,
+			},
+		);
+		const protection = response.data as GitHubBranchProtection;
+		const allowances =
+			protection.required_pull_request_reviews?.bypass_pull_request_allowances;
+		const allowedUsers = allowances?.users ?? [];
+		if (allowedUsers.some((user) => loginMatches(user.login, viewerLogin))) {
+			return true;
+		}
+
+		const allowedTeamSlugs = (allowances?.teams ?? []).flatMap((team) =>
+			team.slug ? [team.slug.toLowerCase()] : [],
+		);
+		if (allowedTeamSlugs.length > 0) {
+			const userTeamSlugs = await getAuthenticatedUserTeamSlugsForOrg(
+				context,
+				owner,
+			);
+			if (allowedTeamSlugs.some((slug) => userTeamSlugs.has(slug))) {
+				return true;
+			}
+		}
+
+		return (
+			permissions?.admin === true && protection.enforce_admins?.enabled !== true
+		);
+	} catch {
+		return null;
+	}
+}
+
+async function getPullRequestBypassState({
+	branch,
+	context,
+	fallbackContext,
+	owner,
+	permissions,
+	repo,
+}: {
+	branch: string;
+	context: GitHubContext;
+	fallbackContext: GitHubContext | null;
+	owner: string;
+	permissions: RepositoryPermissions | undefined;
+	repo: string;
+}) {
+	const contexts = [context, fallbackContext].filter(
+		(candidate, index, candidates): candidate is GitHubContext =>
+			Boolean(candidate) && candidates.indexOf(candidate) === index,
+	);
+
+	let rulesetState: boolean | null = null;
+	for (const candidate of contexts) {
+		const candidateRulesetState = await getRulesetPullRequestBypassState({
+			branch,
+			context: candidate,
+			owner,
+			repo,
+		});
+		if (candidateRulesetState === false) {
+			rulesetState ??= false;
+		}
+		if (candidateRulesetState === true) {
+			rulesetState = true;
+		}
+	}
+
+	let legacyState: boolean | null = null;
+	for (const candidate of contexts) {
+		try {
+			const viewerResponse =
+				await candidate.octokit.rest.users.getAuthenticated();
+			const candidateLegacyState =
+				await legacyBranchProtectionAllowsPullRequestBypass({
+					branch,
+					context: candidate,
+					owner,
+					permissions,
+					repo,
+					viewerLogin: viewerResponse.data.login,
+				});
+			if (candidateLegacyState === false) {
+				legacyState ??= false;
+			}
+			if (candidateLegacyState === true) {
+				legacyState = true;
+			}
+		} catch {}
+	}
+
+	if (rulesetState === false || legacyState === false) {
+		return false;
+	}
+
+	return (
+		rulesetState === true || legacyState === true || permissions?.admin === true
+	);
 }
 
 function buildUserSearchQuery({
@@ -1252,30 +1788,403 @@ async function getPullCommitsResult(
 	});
 }
 
+const COMMENTS_PER_PAGE = 30;
+
+type CommentPageInput = {
+	owner: string;
+	repo: string;
+	issueNumber: number;
+	page: number;
+};
+
+async function getCommentsPageResult(
+	context: GitHubContext,
+	data: CommentPageInput,
+): Promise<{
+	comments: Array<{
+		id: number;
+		body: string;
+		createdAt: string;
+		author: GitHubActor | null;
+	}>;
+	total: number;
+}> {
+	const response = await context.octokit.rest.issues.listComments({
+		owner: data.owner,
+		repo: data.repo,
+		issue_number: data.issueNumber,
+		per_page: COMMENTS_PER_PAGE,
+		page: data.page,
+	});
+
+	const linkHeader = response.headers.link ?? "";
+	let total = response.data.length + (data.page - 1) * COMMENTS_PER_PAGE;
+	const lastMatch = linkHeader.match(/[&?]page=(\d+)[^>]*>;\s*rel="last"/);
+	if (lastMatch) {
+		total = Number(lastMatch[1]) * COMMENTS_PER_PAGE;
+	}
+
+	return {
+		comments: response.data.map((c) => ({
+			id: c.id,
+			body: c.body ?? "",
+			createdAt: c.created_at,
+			author: c.user
+				? {
+						login: c.user.login,
+						avatarUrl: c.user.avatar_url,
+						url: c.user.html_url,
+						type: c.user.type ?? "User",
+					}
+				: null,
+		})),
+		total,
+	};
+}
+
+const TIMELINE_EVENT_TYPES = new Set([
+	"labeled",
+	"unlabeled",
+	"assigned",
+	"unassigned",
+	"review_requested",
+	"review_request_removed",
+	"renamed",
+	"closed",
+	"reopened",
+	"milestoned",
+	"demilestoned",
+	"cross-referenced",
+	"referenced",
+	"reviewed",
+	"convert_to_draft",
+	"ready_for_review",
+]);
+
+function mapTimelineEvents(rawEvents: unknown[]): TimelineEvent[] {
+	return rawEvents
+		.filter((e) => {
+			const event = (e as Record<string, unknown>).event as string | undefined;
+			return event && TIMELINE_EVENT_TYPES.has(event);
+		})
+		.map((e) => {
+			const raw = e as Record<string, unknown>;
+			const actor = raw.actor as Record<string, unknown> | null | undefined;
+			const label = raw.label as Record<string, unknown> | null | undefined;
+			const assignee = raw.assignee as
+				| Record<string, unknown>
+				| null
+				| undefined;
+			const reviewer = raw.requested_reviewer as
+				| Record<string, unknown>
+				| null
+				| undefined;
+			const team = raw.requested_team as
+				| Record<string, unknown>
+				| null
+				| undefined;
+			const rename = raw.rename as Record<string, unknown> | null | undefined;
+			const milestone = raw.milestone as
+				| Record<string, unknown>
+				| null
+				| undefined;
+			const source = raw.source as Record<string, unknown> | null | undefined;
+
+			let mappedSource: TimelineEvent["source"] = null;
+			if (source) {
+				const issue = source.issue as Record<string, unknown> | undefined;
+				if (issue) {
+					const repo = issue.repository as Record<string, unknown> | undefined;
+					mappedSource = {
+						type: issue.pull_request ? "pull_request" : "issue",
+						number: issue.number as number,
+						title: (issue.title as string) ?? "",
+						state: (issue.state as string) ?? "",
+						url: (issue.html_url as string) ?? "",
+						repository: (repo?.full_name as string) ?? null,
+					};
+				}
+			}
+
+			return {
+				id: (raw.id as number) ?? 0,
+				event: raw.event as string,
+				createdAt: (raw.created_at as string) ?? "",
+				actor: actor
+					? {
+							login: (actor.login as string) ?? "",
+							avatarUrl: (actor.avatar_url as string) ?? "",
+							url: (actor.html_url as string) ?? "",
+							type: (actor.type as string) ?? "User",
+						}
+					: null,
+				label: label
+					? {
+							name: (label.name as string) ?? "",
+							color: (label.color as string) ?? "",
+						}
+					: undefined,
+				assignee: assignee
+					? {
+							login: (assignee.login as string) ?? "",
+							avatarUrl: (assignee.avatar_url as string) ?? "",
+							url: (assignee.html_url as string) ?? "",
+							type: (assignee.type as string) ?? "User",
+						}
+					: undefined,
+				requestedReviewer: reviewer
+					? {
+							login: (reviewer.login as string) ?? "",
+							avatarUrl: (reviewer.avatar_url as string) ?? "",
+							url: (reviewer.html_url as string) ?? "",
+							type: (reviewer.type as string) ?? "User",
+						}
+					: undefined,
+				requestedTeam: team
+					? {
+							name: (team.name as string) ?? "",
+							slug: (team.slug as string) ?? "",
+						}
+					: undefined,
+				rename: rename
+					? {
+							from: (rename.from as string) ?? "",
+							to: (rename.to as string) ?? "",
+						}
+					: undefined,
+				milestone: milestone
+					? { title: (milestone.title as string) ?? "" }
+					: undefined,
+				source: mappedSource,
+				reviewState: (raw.state as string) ?? undefined,
+				body: (raw.body as string) ?? undefined,
+			};
+		});
+}
+
+type GraphQLCrossRefResponse = {
+	repository: {
+		issueOrPullRequest: {
+			timelineItems: {
+				nodes: Array<{
+					actor: { login: string; avatarUrl: string; url: string } | null;
+					createdAt: string;
+					source: {
+						__typename: string;
+						number: number;
+						title: string;
+						state: string;
+						url: string;
+						repository: { nameWithOwner: string };
+					};
+				}>;
+			};
+		} | null;
+	};
+};
+
+async function getCrossReferencesViaGraphQL(
+	context: GitHubContext,
+	data: { owner: string; repo: string; issueNumber: number },
+): Promise<TimelineEvent[]> {
+	try {
+		const response = await context.octokit.graphql<GraphQLCrossRefResponse>(
+			`query ($owner: String!, $repo: String!, $number: Int!) {
+				repository(owner: $owner, name: $repo) {
+					issueOrPullRequest(number: $number) {
+						... on Issue {
+							timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
+								nodes {
+									... on CrossReferencedEvent {
+										actor { login avatarUrl url }
+										createdAt
+										source {
+											__typename
+											... on Issue {
+												number title state url
+												repository { nameWithOwner }
+											}
+											... on PullRequest {
+												number title state url
+												repository { nameWithOwner }
+											}
+										}
+									}
+								}
+							}
+						}
+						... on PullRequest {
+							timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
+								nodes {
+									... on CrossReferencedEvent {
+										actor { login avatarUrl url }
+										createdAt
+										source {
+											__typename
+											... on Issue {
+												number title state url
+												repository { nameWithOwner }
+											}
+											... on PullRequest {
+												number title state url
+												repository { nameWithOwner }
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}`,
+			{
+				owner: data.owner,
+				repo: data.repo,
+				number: data.issueNumber,
+			},
+		);
+
+		const issueOrPR = response.repository.issueOrPullRequest;
+		const nodes = issueOrPR?.timelineItems.nodes ?? [];
+
+		return nodes
+			.filter((node) => node.source)
+			.map((node) => ({
+				id: 0,
+				event: "cross-referenced",
+				createdAt: node.createdAt,
+				actor: node.actor
+					? {
+							login: node.actor.login,
+							avatarUrl: node.actor.avatarUrl,
+							url: node.actor.url,
+							type: "User",
+						}
+					: null,
+				source: {
+					type:
+						node.source.__typename === "PullRequest"
+							? ("pull_request" as const)
+							: ("issue" as const),
+					number: node.source.number,
+					title: node.source.title,
+					state: node.source.state.toLowerCase(),
+					url: node.source.url,
+					repository: node.source.repository.nameWithOwner,
+				},
+			}));
+	} catch (error) {
+		console.error(
+			"[timeline:graphql] ERROR:",
+			error instanceof Error ? error.message : error,
+		);
+		return [];
+	}
+}
+
+const TIMELINE_EVENTS_PER_PAGE = 100;
+
+type TimelineEventsResult = {
+	events: TimelineEvent[];
+	hasMore: boolean;
+};
+
+async function getTimelineEventsResult(
+	context: GitHubContext,
+	data: { owner: string; repo: string; issueNumber: number },
+): Promise<TimelineEventsResult> {
+	const [restResult, crossRefs] = await Promise.all([
+		getRestTimelineEventsPage(context, data, 1),
+		getCrossReferencesViaGraphQL(context, data),
+	]);
+
+	const restCrossRefKeys = new Set(
+		restResult.events
+			.filter((e) => e.event === "cross-referenced" && e.source)
+			.map((e) => `${e.source?.repository ?? ""}#${e.source?.number}`),
+	);
+
+	const uniqueCrossRefs = crossRefs.filter(
+		(e) =>
+			!restCrossRefKeys.has(
+				`${e.source?.repository ?? ""}#${e.source?.number}`,
+			),
+	);
+
+	return {
+		events: [...restResult.events, ...uniqueCrossRefs],
+		hasMore: restResult.hasMore,
+	};
+}
+
+async function getRestTimelineEventsPage(
+	context: GitHubContext,
+	data: { owner: string; repo: string; issueNumber: number },
+	page: number,
+): Promise<TimelineEventsResult> {
+	try {
+		const response = await context.octokit.request(
+			"GET /repos/{owner}/{repo}/issues/{issue_number}/timeline",
+			{
+				owner: data.owner,
+				repo: data.repo,
+				issue_number: data.issueNumber,
+				per_page: TIMELINE_EVENTS_PER_PAGE,
+				page,
+				headers: {
+					accept: "application/vnd.github.v3+json",
+				},
+			},
+		);
+
+		const items = response.data as unknown[];
+
+		return {
+			events: mapTimelineEvents(items),
+			hasMore: items.length >= TIMELINE_EVENTS_PER_PAGE,
+		};
+	} catch (error) {
+		console.error(
+			"[timeline:rest] ERROR:",
+			error instanceof Error ? error.message : error,
+		);
+		return { events: [], hasMore: false };
+	}
+}
+
 async function computePullStatus(
 	context: GitHubContext,
 	data: PullFromRepoInput,
 	pull: RepoPullDetail,
 ): Promise<PullStatus> {
-	const [reviewsResponse, checksResponse, repoResponse] = await Promise.all([
-		context.octokit.rest.pulls.listReviews({
-			owner: data.owner,
-			repo: data.repo,
-			pull_number: data.pullNumber,
-			per_page: 100,
-		}),
-		context.octokit.rest.checks
-			.listForRef({
+	const [reviewsResponse, checksResponse, userContext, oauthContext] =
+		await Promise.all([
+			context.octokit.rest.pulls.listReviews({
 				owner: data.owner,
 				repo: data.repo,
-				ref: pull.head.sha,
+				pull_number: data.pullNumber,
 				per_page: 100,
-			})
-			.catch(() => null),
-		context.octokit.rest.repos
-			.get({ owner: data.owner, repo: data.repo })
-			.catch(() => null),
-	]);
+			}),
+			context.octokit.rest.checks
+				.listForRef({
+					owner: data.owner,
+					repo: data.repo,
+					ref: pull.head.sha,
+					per_page: 100,
+				})
+				.catch(() => null),
+			getGitHubUserContextForRepository(data),
+			getGitHubContext(),
+		]);
+	const permissions = mergeRepositoryPermissions(
+		await getRepositoryPermissions(
+			userContext ?? context,
+			data.owner,
+			data.repo,
+		),
+		await getRepositoryPermissions(oauthContext, data.owner, data.repo),
+		pull.base.repo.permissions,
+	);
 
 	const latestReviews = new Map<
 		string,
@@ -1326,11 +2235,16 @@ async function computePullStatus(
 		behindBy = null;
 	}
 
-	const permissions =
-		repoResponse?.data.permissions ?? pull.base.repo.permissions;
 	const canUpdateBranch =
 		!permissions || permissions.push === true || permissions.admin === true;
-	const canBypassProtections = permissions?.admin === true;
+	const canBypassProtections = await getPullRequestBypassState({
+		branch: pull.base.ref,
+		context: userContext ?? context,
+		fallbackContext: oauthContext,
+		owner: data.owner,
+		permissions,
+		repo: data.repo,
+	});
 
 	return {
 		reviews: Array.from(latestReviews.values()),
@@ -1373,7 +2287,7 @@ async function getPullStatusResult(
 
 	return getOrRevalidateGitHubResource<PullStatus>({
 		userId: context.session.user.id,
-		resource: "pulls.status.v1",
+		resource: "pulls.status.v3",
 		params: data,
 		freshForMs: githubCachePolicy.status.staleTimeMs,
 		signalKeys: [pullNamespaceKey],
@@ -1409,15 +2323,42 @@ async function getPullPageDataResult(
 		freshForMs: githubCachePolicy.detail.staleTimeMs,
 	});
 
-	const [comments, commits] = await Promise.all([
-		getPullCommentsResult(context, data),
+	const totalComments = pull.comments ?? 0;
+	const totalPages = Math.max(1, Math.ceil(totalComments / COMMENTS_PER_PAGE));
+	const issueData = {
+		owner: data.owner,
+		repo: data.repo,
+		issueNumber: data.pullNumber,
+	};
+
+	const pagesToFetch = totalPages === 1 ? [1] : [1, totalPages];
+
+	const [commentsPages, commits, timelineResult] = await Promise.all([
+		Promise.all(
+			pagesToFetch.map((p) =>
+				getCommentsPageResult(context, { ...issueData, page: p }),
+			),
+		),
 		getPullCommitsResult(context, data),
+		getTimelineEventsResult(context, issueData),
 	]);
+
+	const allComments = commentsPages.flatMap((p) => p.comments);
 
 	return {
 		detail: mapPullDetail(pull, buildRepositoryRef(data.owner, data.repo)),
-		comments,
+		comments: allComments,
 		commits,
+		events: timelineResult.events,
+		commentPagination: {
+			totalCount: totalComments,
+			perPage: COMMENTS_PER_PAGE,
+			loadedPages: pagesToFetch,
+		},
+		eventPagination: {
+			loadedPages: [1],
+			hasMore: timelineResult.hasMore,
+		},
 	};
 }
 
@@ -1506,14 +2447,42 @@ async function getIssuePageDataResult(
 	context: GitHubContext,
 	data: IssueFromRepoInput,
 ): Promise<IssuePageData> {
-	const [detail, comments] = await Promise.all([
-		getIssueDetailResult(context, data),
-		getIssueCommentsResult(context, data),
+	const detail = await getIssueDetailResult(context, data);
+
+	const totalComments = detail?.comments ?? 0;
+	const totalPages = Math.max(1, Math.ceil(totalComments / COMMENTS_PER_PAGE));
+	const issueData = {
+		owner: data.owner,
+		repo: data.repo,
+		issueNumber: data.issueNumber,
+	};
+
+	const pagesToFetch = totalPages === 1 ? [1] : [1, totalPages];
+
+	const [commentsPages, timelineResult] = await Promise.all([
+		Promise.all(
+			pagesToFetch.map((p) =>
+				getCommentsPageResult(context, { ...issueData, page: p }),
+			),
+		),
+		getTimelineEventsResult(context, issueData),
 	]);
+
+	const allComments = commentsPages.flatMap((p) => p.comments);
 
 	return {
 		detail,
-		comments,
+		comments: allComments,
+		events: timelineResult.events,
+		commentPagination: {
+			totalCount: totalComments,
+			perPage: COMMENTS_PER_PAGE,
+			loadedPages: pagesToFetch,
+		},
+		eventPagination: {
+			loadedPages: [1],
+			hasMore: timelineResult.hasMore,
+		},
 	};
 }
 
@@ -1683,48 +2652,10 @@ export const getGitHubAppAccessState = createServerFn({
 
 	const viewer = await getViewer(context);
 	const appSlug = getGitHubAppSlug();
+	const appAuthorizationUrl = buildGitHubAppAuthorizePath();
 	const publicInstallUrl = buildGitHubAppInstallUrl(appSlug);
-
-	let installations: GitHubAppInstallation[] = [];
-	try {
-		const installationsResponse = await context.octokit.request(
-			"GET /user/installations",
-			{
-				per_page: 100,
-			},
-		);
-		const payload =
-			installationsResponse.data as GitHubUserInstallationsPayload;
-		installations = (payload.installations ?? []).flatMap((installation) => {
-			if (!installation.id || !installation.account?.login) {
-				return [];
-			}
-
-			const targetType = toInstallationTargetType(installation.target_type);
-
-			return [
-				{
-					id: installation.id,
-					account: {
-						login: installation.account.login,
-						name: null,
-						avatarUrl: installation.account.avatar_url ?? null,
-						type: toInstallationTargetType(installation.account.type),
-					},
-					targetType,
-					repositorySelection:
-						installation.repository_selection === "all" ||
-						installation.repository_selection === "selected"
-							? installation.repository_selection
-							: "unknown",
-					manageUrl: installation.html_url ?? null,
-					suspendedAt: installation.suspended_at ?? null,
-				},
-			];
-		});
-	} catch (error) {
-		console.error("[github-access] failed to load installations", error);
-	}
+	const { installations, installationsAvailable } =
+		await getGitHubAppUserInstallations(context.session.user.id);
 
 	let organizations: GitHubOrganization[] = [];
 	try {
@@ -1763,6 +2694,22 @@ export const getGitHubAppAccessState = createServerFn({
 	const orgInstallations = installations.filter(
 		(installation) => installation.targetType === "Organization",
 	);
+	const organizationByLogin = new Map(
+		organizations.map((organization) => [
+			organization.login.toLowerCase(),
+			organization,
+		]),
+	);
+	for (const installation of orgInstallations) {
+		if (!organizationByLogin.has(installation.account.login.toLowerCase())) {
+			organizationByLogin.set(installation.account.login.toLowerCase(), {
+				id: installation.account.id ?? installation.id,
+				login: installation.account.login,
+				avatarUrl: installation.account.avatarUrl,
+			});
+		}
+	}
+	organizations = [...organizationByLogin.values()];
 	const installedOrganizationLogins = new Set(
 		orgInstallations.map((installation) =>
 			installation.account.login.toLowerCase(),
@@ -1772,7 +2719,9 @@ export const getGitHubAppAccessState = createServerFn({
 	return {
 		viewerLogin,
 		appSlug,
+		appAuthorizationUrl,
 		publicInstallUrl,
+		installationsAvailable,
 		personalInstallation,
 		orgInstallations,
 		organizations,
@@ -1821,6 +2770,85 @@ export const getUserRepos = createServerFn({ method: "GET" }).handler(
 		});
 	},
 );
+
+export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<CommandPaletteSearchInput>)
+	.handler(async ({ data }): Promise<CommandPaletteSearchResult> => {
+		const query = normalizeCommandPaletteSearchQuery(data.query);
+		if (query.length < 2) {
+			return emptyCommandPaletteSearchResult();
+		}
+
+		const context = await getGitHubContext();
+		if (!context) {
+			return emptyCommandPaletteSearchResult();
+		}
+
+		const perPage = clampCommandSearchPerPage(data.perPage);
+		const [repositories, users, pullItems, issueItems] = await Promise.all([
+			safeCommandPaletteSearch({
+				label: "repositories",
+				fallback: [] as UserRepoSummary[],
+				task: async () => {
+					const response = await context.octokit.rest.search.repos({
+						q: `${query} in:name,description fork:true`,
+						per_page: perPage,
+						sort: "updated",
+						order: "desc",
+					});
+					return response.data.items.map(mapRepositorySearchItem);
+				},
+			}),
+			safeCommandPaletteSearch({
+				label: "users",
+				fallback: [] as GitHubAccountSummary[],
+				task: async () => {
+					const response = await context.octokit.rest.search.users({
+						q: `${query} in:login,fullname`,
+						per_page: perPage,
+					});
+					return response.data.items
+						.map((user) => mapGitHubAccountSearchItem(user))
+						.filter((user): user is GitHubAccountSummary => Boolean(user));
+				},
+			}),
+			safeCommandPaletteSearch({
+				label: "pull requests",
+				fallback: [] as SearchItem[],
+				task: async () => {
+					const response =
+						await context.octokit.rest.search.issuesAndPullRequests({
+							q: `${query} is:pr in:title,body archived:false`,
+							per_page: perPage,
+							sort: "updated",
+							order: "desc",
+						});
+					return response.data.items;
+				},
+			}),
+			safeCommandPaletteSearch({
+				label: "issues",
+				fallback: [] as SearchItem[],
+				task: async () => {
+					const response =
+						await context.octokit.rest.search.issuesAndPullRequests({
+							q: `${query} is:issue in:title,body archived:false`,
+							per_page: perPage,
+							sort: "updated",
+							order: "desc",
+						});
+					return response.data.items;
+				},
+			}),
+		]);
+
+		return {
+			repositories,
+			users,
+			pulls: mapPullSearchItems(pullItems),
+			issues: mapIssueSearchItems(issueItems),
+		};
+	});
 
 function toInstallationTargetType(
 	value: string | undefined,
@@ -1922,7 +2950,7 @@ export const getPullsFromUser = createServerFn({ method: "GET" })
 export const getPullsFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullsFromRepoInput>)
 	.handler(async ({ data }): Promise<PullSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -1962,10 +2990,39 @@ export const getPullsFromRepo = createServerFn({ method: "GET" })
 		});
 	});
 
+export const getCommentPage = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<CommentPageInput>)
+	.handler(async ({ data }) => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return { comments: [], total: 0 };
+		}
+
+		return getCommentsPageResult(context, data);
+	});
+
+type TimelineEventPageInput = {
+	owner: string;
+	repo: string;
+	issueNumber: number;
+	page: number;
+};
+
+export const getTimelineEventPage = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<TimelineEventPageInput>)
+	.handler(async ({ data }) => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return { events: [], hasMore: false };
+		}
+
+		return getRestTimelineEventsPage(context, data, data.page);
+	});
+
 export const getPullFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullDetail | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -1976,7 +3033,7 @@ export const getPullFromRepo = createServerFn({ method: "GET" })
 export const getPullComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2070,7 +3127,7 @@ export const getIssuesFromUser = createServerFn({ method: "GET" })
 export const getIssuesFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssuesFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2117,7 +3174,7 @@ export const getIssuesFromRepo = createServerFn({ method: "GET" })
 export const getIssueFromRepo = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueDetail | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2128,7 +3185,7 @@ export const getIssueFromRepo = createServerFn({ method: "GET" })
 export const getIssueComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssueComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2139,7 +3196,7 @@ export const getIssueComments = createServerFn({ method: "GET" })
 export const getIssuePageData = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<IssueFromRepoInput>)
 	.handler(async ({ data }): Promise<IssuePageData | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2150,7 +3207,7 @@ export const getIssuePageData = createServerFn({ method: "GET" })
 export const getPullStatus = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullStatus | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2161,7 +3218,7 @@ export const getPullStatus = createServerFn({ method: "GET" })
 export const getPullPageData = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullPageData | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2174,7 +3231,7 @@ type UpdatePullBodyInput = PullFromRepoInput & { body: string };
 export const updatePullBody = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<UpdatePullBodyInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2196,7 +3253,7 @@ export const updatePullBody = createServerFn({ method: "POST" })
 export const updatePullBranch = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2222,7 +3279,7 @@ export type MergePullInput = PullFromRepoInput & {
 export const mergePullRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<MergePullInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubUserContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2238,6 +3295,28 @@ export const mergePullRequest = createServerFn({ method: "POST" })
 			return { ok: true };
 		} catch (error) {
 			return toMutationError("merge pull request", error);
+		}
+	});
+
+export const deleteBranch = createServerFn({ method: "POST" })
+	.inputValidator(
+		identityValidator<{ owner: string; repo: string; branch: string }>,
+	)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.rest.git.deleteRef({
+				owner: data.owner,
+				repo: data.repo,
+				ref: `heads/${data.branch}`,
+			});
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("delete branch", error);
 		}
 	});
 
@@ -2333,7 +3412,7 @@ async function getPullFileSummariesResult(
 export const getPullFileSummaries = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullFileSummary[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2344,7 +3423,7 @@ export const getPullFileSummaries = createServerFn({ method: "GET" })
 export const getPullFiles = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFilesPageInput>)
 	.handler(async ({ data }): Promise<PullFilesPage> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { files: [], nextPage: null };
 		}
@@ -2407,7 +3486,7 @@ async function getPullReviewCommentsResult(
 export const getPullReviewComments = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<PullFromRepoInput>)
 	.handler(async ({ data }): Promise<PullReviewComment[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2418,7 +3497,7 @@ export const getPullReviewComments = createServerFn({ method: "GET" })
 export const submitPullReview = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<SubmitReviewInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2454,7 +3533,7 @@ export const submitPullReview = createServerFn({ method: "POST" })
 export const createReviewComment = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<CreateReviewCommentInput>)
 	.handler(async ({ data }): Promise<PullReviewComment | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
@@ -2510,7 +3589,7 @@ export type RepoCollaboratorsInput = {
 export const getRepoCollaborators = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<RepoCollaboratorsInput>)
 	.handler(async ({ data }): Promise<RepoCollaborator[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2580,7 +3659,7 @@ export type OrgTeamsInput = {
 export const getOrgTeams = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<OrgTeamsInput>)
 	.handler(async ({ data }): Promise<OrgTeam[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForOwner(data.org);
 		if (!context) {
 			return [];
 		}
@@ -2622,7 +3701,7 @@ export const getOrgTeams = createServerFn({ method: "GET" })
 export const requestPullReviewers = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2649,7 +3728,7 @@ export const requestPullReviewers = createServerFn({ method: "POST" })
 export const removeReviewRequest = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<RequestReviewersInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2684,7 +3763,7 @@ export type DismissReviewInput = {
 export const dismissPullReview = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<DismissReviewInput>)
 	.handler(async ({ data }): Promise<MutationResult> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
@@ -2716,7 +3795,7 @@ export type RepoLabelsInput = {
 export const getRepoLabels = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<RepoLabelsInput>)
 	.handler(async ({ data }): Promise<GitHubLabel[]> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return [];
 		}
@@ -2757,7 +3836,7 @@ export const getRepoLabels = createServerFn({ method: "GET" })
 export const setIssueLabels = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<SetLabelsInput>)
 	.handler(async ({ data }): Promise<boolean> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return false;
 		}
@@ -2791,7 +3870,7 @@ export const setIssueLabels = createServerFn({ method: "POST" })
 export const createRepoLabel = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<CreateLabelInput>)
 	.handler(async ({ data }): Promise<GitHubLabel | null> => {
-		const context = await getGitHubContext();
+		const context = await getGitHubContextForRepository(data);
 		if (!context) {
 			return null;
 		}
