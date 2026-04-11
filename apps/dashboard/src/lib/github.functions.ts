@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { type Octokit as OctokitType, RequestError } from "octokit";
+import { debug } from "./debug";
 import type {
 	CommandPaletteSearchResult,
 	CreateLabelInput,
@@ -693,19 +694,59 @@ async function safeCommandPaletteSearch<T>({
 	}
 }
 
-async function getGitHubContext(): Promise<GitHubContext | null> {
-	const { getGitHubClientByUserId, getRequestSession } = await import(
-		"./auth-runtime"
-	);
-	const session = await getRequestSession();
-	if (!session) {
+const requestScopedGitHubContextCache = new WeakMap<
+	Request,
+	Map<string, Promise<GitHubContext | null>>
+>();
+
+async function getRequestScopedContextCache() {
+	try {
+		const { getRequest } = await import("@tanstack/react-start/server");
+		const request = getRequest();
+		let cache = requestScopedGitHubContextCache.get(request);
+		if (!cache) {
+			cache = new Map();
+			requestScopedGitHubContextCache.set(request, cache);
+		}
+		return cache;
+	} catch {
 		return null;
 	}
+}
 
-	return {
-		session,
-		octokit: await getGitHubClientByUserId(session.user.id),
-	};
+async function getOrCreateCachedContext(
+	cacheKey: string,
+	factory: () => Promise<GitHubContext | null>,
+): Promise<GitHubContext | null> {
+	const cache = await getRequestScopedContextCache();
+	const existing = cache?.get(cacheKey);
+	if (existing) {
+		debug("github-access", "reusing cached context", { cacheKey });
+		return existing;
+	}
+
+	const promise = factory();
+	cache?.set(cacheKey, promise);
+	return promise;
+}
+
+async function getGitHubContext(): Promise<GitHubContext | null> {
+	return getOrCreateCachedContext("base", async () => {
+		const { getGitHubClientByUserId, getRequestSession } = await import(
+			"./auth-runtime"
+		);
+		const session = await getRequestSession();
+		if (!session) {
+			debug("github-access", "no session, unauthenticated request");
+			return null;
+		}
+
+		debug("github-access", "session found", { userId: session.user.id });
+		return {
+			session,
+			octokit: await getGitHubClientByUserId(session.user.id),
+		};
+	});
 }
 
 function toRepositorySelection(value: string | undefined) {
@@ -747,23 +788,29 @@ async function getGitHubAppUserInstallations(userId: string): Promise<{
 	installations: GitHubAppInstallation[];
 	installationsAvailable: boolean;
 }> {
-	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
-	const appUserOctokit = await getGitHubAppUserClientByUserId(userId);
-	if (!appUserOctokit) {
-		return { installations: [], installationsAvailable: false };
-	}
-
 	try {
+		const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+		const appUserOctokit = await getGitHubAppUserClientByUserId(userId);
+		if (!appUserOctokit) {
+			debug("github-access", "no app user client, skipping installations");
+			return { installations: [], installationsAvailable: false };
+		}
+
 		const installationsResponse = await appUserOctokit.request(
 			"GET /user/installations",
 			{
 				per_page: 100,
 			},
 		);
+		const installations = mapGitHubAppInstallations(
+			installationsResponse.data as GitHubUserInstallationsPayload,
+		);
+		debug("github-access", "loaded app installations", {
+			count: installations.length,
+			owners: installations.map((i) => i.account.login),
+		});
 		return {
-			installations: mapGitHubAppInstallations(
-				installationsResponse.data as GitHubUserInstallationsPayload,
-			),
+			installations,
 			installationsAvailable: true,
 		};
 	} catch (error) {
@@ -773,32 +820,53 @@ async function getGitHubAppUserInstallations(userId: string): Promise<{
 }
 
 async function getGitHubContextForOwner(owner: string) {
-	const context = await getGitHubContext();
-	if (!context) {
-		return null;
-	}
+	return getOrCreateCachedContext(`owner:${owner}`, async () => {
+		const context = await getGitHubContext();
+		if (!context) {
+			return null;
+		}
 
-	const { installations } = await getGitHubAppUserInstallations(
-		context.session.user.id,
-	);
-	const installation = findGitHubAppInstallationForOwner(installations, owner);
-	if (!installation) {
-		return context;
-	}
-
-	try {
-		const { getGitHubInstallationClient } = await import("./github.server");
-		return {
-			...context,
-			octokit: await getGitHubInstallationClient(installation.id),
-		};
-	} catch (error) {
-		console.error(
-			"[github-access] failed to create installation client",
-			error,
+		const { installations } = await getGitHubAppUserInstallations(
+			context.session.user.id,
 		);
-		return context;
-	}
+		const installation = findGitHubAppInstallationForOwner(
+			installations,
+			owner,
+		);
+		if (!installation) {
+			debug("github-access", "no installation for owner, using OAuth token", {
+				owner,
+			});
+			return context;
+		}
+
+		try {
+			debug("github-access", "creating installation client", {
+				owner,
+				installationId: installation.id,
+			});
+			const { getGitHubInstallationClient } = await import("./github.server");
+			const installationOctokit = await getGitHubInstallationClient(
+				installation.id,
+			);
+			// Eagerly authenticate to verify the installation token is valid.
+			// auth-app authenticates lazily by default, so without this the
+			// try/catch cannot catch auth failures.
+			await installationOctokit.auth({ type: "installation" });
+			debug("github-access", "installation client ready", { owner });
+			return {
+				...context,
+				octokit: installationOctokit,
+			};
+		} catch (error) {
+			console.error(
+				"[github-access] installation client failed, falling back to OAuth token",
+				owner,
+				error,
+			);
+			return context;
+		}
+	});
 }
 
 async function getGitHubContextForRepository(input: {
@@ -815,38 +883,64 @@ function findGitHubAppInstallationForOwner(
 	const normalizedOwner = owner.toLowerCase();
 	return installations.find(
 		(candidate) =>
-			candidate.account.login.toLowerCase() === normalizedOwner ||
-			(candidate.targetType === "User" &&
-				candidate.account.login.toLowerCase() === normalizedOwner),
+			!candidate.suspendedAt &&
+			(candidate.account.login.toLowerCase() === normalizedOwner ||
+				(candidate.targetType === "User" &&
+					candidate.account.login.toLowerCase() === normalizedOwner)),
 	);
 }
 
 async function getGitHubUserContextForOwner(owner: string) {
-	const context = await getGitHubContext();
-	if (!context) {
-		return null;
-	}
+	return getOrCreateCachedContext(`user-owner:${owner}`, async () => {
+		const context = await getGitHubContext();
+		if (!context) {
+			return null;
+		}
 
-	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
-	const appUserOctokit = await getGitHubAppUserClientByUserId(
-		context.session.user.id,
-	);
-	if (!appUserOctokit) {
-		return context;
-	}
+		try {
+			const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+			const appUserOctokit = await getGitHubAppUserClientByUserId(
+				context.session.user.id,
+			);
+			if (!appUserOctokit) {
+				debug(
+					"github-access",
+					"no app user client for writes, using OAuth token",
+					{ owner },
+				);
+				return context;
+			}
 
-	const { installations } = await getGitHubAppUserInstallations(
-		context.session.user.id,
-	);
-	const installation = findGitHubAppInstallationForOwner(installations, owner);
-	if (!installation) {
-		return context;
-	}
+			const { installations } = await getGitHubAppUserInstallations(
+				context.session.user.id,
+			);
+			const installation = findGitHubAppInstallationForOwner(
+				installations,
+				owner,
+			);
+			if (!installation) {
+				debug(
+					"github-access",
+					"no installation for owner, using OAuth token for writes",
+					{ owner },
+				);
+				return context;
+			}
 
-	return {
-		...context,
-		octokit: appUserOctokit,
-	};
+			debug("github-access", "using app user token for writes", { owner });
+			return {
+				...context,
+				octokit: appUserOctokit,
+			};
+		} catch (error) {
+			console.error(
+				"[github-access] failed to resolve user context, falling back to OAuth token",
+				owner,
+				error,
+			);
+			return context;
+		}
+	});
 }
 
 async function getGitHubUserContextForRepository(input: {

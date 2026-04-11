@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { account } from "../db/schema";
+import { debug } from "./debug";
 import { normalizeGitHubAppPrivateKey } from "./github-private-key";
 import { GITHUB_REQUEST_TIMEOUT_MS } from "./github-request-policy";
 
@@ -196,19 +197,25 @@ async function refreshGitHubAppUserToken({
 	userId: string;
 }) {
 	const githubApp = getGitHubAppAuthConfig();
-	const payload = await requestGitHubAppUserToken({
-		client_id: githubApp.clientId,
-		client_secret: githubApp.clientSecret,
-		grant_type: "refresh_token",
-		refresh_token: refreshToken,
-	});
+	try {
+		const payload = await requestGitHubAppUserToken({
+			client_id: githubApp.clientId,
+			client_secret: githubApp.clientSecret,
+			grant_type: "refresh_token",
+			refresh_token: refreshToken,
+		});
 
-	await saveGitHubAppUserToken({
-		userId,
-		payload,
-	});
+		await saveGitHubAppUserToken({
+			userId,
+			payload,
+		});
 
-	return payload.access_token;
+		debug("github-auth", "app user token refreshed", { userId });
+		return payload.access_token;
+	} catch (error) {
+		console.error("[github-auth] app user token refresh failed", userId, error);
+		throw error;
+	}
 }
 
 async function saveGitHubAppUserToken({
@@ -258,10 +265,12 @@ async function saveGitHubAppUserToken({
 export async function getGitHubAppUserAccessTokenByUserId(userId: string) {
 	const githubAccount = await getGitHubAppUserAccountByUserId(userId);
 	if (!githubAccount?.accessToken) {
+		debug("github-auth", "no app user account", { userId });
 		return null;
 	}
 
 	if (isUsableAccessTokenExpiresAt(githubAccount.accessTokenExpiresAt)) {
+		debug("github-auth", "app user token is fresh", { userId });
 		return githubAccount.accessToken;
 	}
 
@@ -269,9 +278,16 @@ export async function getGitHubAppUserAccessTokenByUserId(userId: string) {
 		!githubAccount.refreshToken ||
 		!isUsableAccessTokenExpiresAt(githubAccount.refreshTokenExpiresAt)
 	) {
+		debug("github-auth", "app user token expired, refresh unavailable", {
+			userId,
+			hasRefreshToken: Boolean(githubAccount.refreshToken),
+			refreshTokenExpiresAt:
+				githubAccount.refreshTokenExpiresAt?.toISOString() ?? null,
+		});
 		return null;
 	}
 
+	debug("github-auth", "app user token expired, refreshing", { userId });
 	return refreshGitHubAppUserToken({
 		refreshToken: githubAccount.refreshToken,
 		userId,
