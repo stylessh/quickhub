@@ -2,6 +2,9 @@
 
 A fast, design-first GitHub dashboard for developers who want to stay on top of their pull requests, issues, and code reviews — without the noise.
 
+> [!WARNING]
+> **Alpha** — DiffKit is in early release. Expect bugs, errors, and rough edges. Feedback and issue reports are welcome on [GitHub Issues](https://github.com/stylessh/diffkit/issues).
+
 ## Features
 
 - **Pull Requests** — View, filter, and manage your open PRs across repos

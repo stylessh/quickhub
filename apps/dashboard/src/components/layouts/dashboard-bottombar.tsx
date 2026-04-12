@@ -3,15 +3,15 @@ import { cn } from "@diffkit/ui/lib/utils";
 import { useShowOrgSetupQueryState } from "#/lib/github-access-dialog-query";
 import { openGitHubAccessPrompt } from "#/lib/github-access-modal-store";
 import { removeWarning, useWarnings } from "#/lib/warning-store";
+import { ExtensionInstallPrompt } from "./extension-install-prompt";
 
 export function DashboardBottomBar() {
 	const warnings = useWarnings();
 	const [, setShowOrgSetup] = useShowOrgSetupQueryState();
 
-	if (warnings.length === 0) return null;
-
 	return (
-		<div className="flex flex-col gap-1 px-2 pb-2">
+		<div className="empty:hidden flex flex-row flex-wrap items-start gap-1 px-2 pb-2">
+			<ExtensionInstallPrompt />
 			{warnings.map((warning) => (
 				<div
 					key={warning.id}

@@ -2,6 +2,8 @@ type SiteConfig = {
 	name: string;
 	domain: string;
 	url: string;
+	/** Where users install the GitHub → DiffKit redirect browser extension (store or docs). */
+	browserExtensionInstallUrl: string;
 	githubRepositoryUrl: string;
 	themeColor: string;
 	socialImagePath: string;
@@ -15,6 +17,8 @@ export const siteConfig: SiteConfig = {
 	name: "DiffKit",
 	domain: "diff-kit.com",
 	url: "https://diff-kit.com",
+	browserExtensionInstallUrl:
+		"https://github.com/stylessh/diffkit/blob/main/extensions/diffkit-redirect/README.md#install-locally",
 	githubRepositoryUrl: "https://github.com/stylessh/diffkit",
 	themeColor: "#00C943",
 	socialImagePath: "/logo512.png",

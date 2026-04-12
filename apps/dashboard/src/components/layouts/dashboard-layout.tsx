@@ -30,6 +30,11 @@ const GitHubAccessDialog = lazy(() =>
 		default: mod.GitHubAccessDialog,
 	})),
 );
+const AlphaNoticeDialog = lazy(() =>
+	import("./alpha-notice-dialog").then((mod) => ({
+		default: mod.AlphaNoticeDialog,
+	})),
+);
 
 const routeApi = getRouteApi("/_protected");
 
@@ -126,6 +131,7 @@ export function DashboardLayout() {
 			/>
 			<Suspense>
 				<CommandPalette />
+				<AlphaNoticeDialog />
 				<GitHubAccessDialog userId={user.id} />
 			</Suspense>
 		</div>

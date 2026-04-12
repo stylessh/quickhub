@@ -44,6 +44,22 @@
       },
     },
     {
+      id: "github-repo-overview",
+      label: "Repository overview",
+      description:
+        "Redirect GitHub repository home (two-segment path) to DiffKit repo overview.",
+      enabled: true,
+      match: {
+        urlRegex: "^https://github\\.com/([^/?#]+)/([^/?#]+)/?(?:[?#].*)?$",
+        excludeUrlRegexes: [
+          "^https://github\\.com/(?:orgs|new|settings|organizations|account)(?:/|$|[?#])",
+        ],
+      },
+      redirect: {
+        replacement: "https://diff-kit.com/$1/$2",
+      },
+    },
+    {
       id: "github-pull-details",
       label: "Pull request details",
       description: "Redirect GitHub pull request detail pages to DiffKit.",
@@ -78,6 +94,22 @@
       },
       redirect: {
         replacement: "https://diff-kit.com/$1/$2/issues/$3",
+      },
+    },
+    {
+      id: "github-user-profile",
+      label: "User profile",
+      description:
+        "Redirect GitHub user/org profile home (single-segment path) to DiffKit profile.",
+      enabled: true,
+      match: {
+        urlRegex: "^https://github\\.com/([^/?#]+)/?(?:[?#].*)?$",
+        excludeUrlRegexes: [
+          "^https://github\\.com/(?:pulls|issues|notifications|explore|marketplace|settings|login|join|sponsors?|topics|collections|codespaces|features|enterprise|team|pricing|resources|readme|security|opensource|copilot|education|orgs|organizations|new|account|watching|dashboard|sessions)(?:/|$|[?#])",
+        ],
+      },
+      redirect: {
+        replacement: "https://diff-kit.com/$1",
       },
     },
   ];

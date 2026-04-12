@@ -10,6 +10,7 @@ Standalone browser extension for redirecting only selected GitHub URLs to DiffKi
 - Uses a configurable list of rules instead of redirecting every GitHub page
 - Supports both exact URL redirects and regex-based route schemas
 - Supports custom route remaps like GitHub PR changes pages to DiffKit review pages
+- On the DiffKit web app (`diff-kit.com` and local dev), sets `data-diffkit-extension="1"` on `<html>` so the site can hide “install extension” prompts when the add-on is already loaded
 
 ## Default rule
 
@@ -21,12 +22,16 @@ The extension ships with these enabled rules:
 - `https://diff-kit.com/pulls`
 - `https://github.com/issues/*`
 - `https://diff-kit.com/issues`
+- `https://github.com/:owner/:repo` (repository overview; excludes `orgs`, `settings`, etc.)
+- `https://diff-kit.com/:owner/:repo`
 - `https://github.com/:owner/:repo/pull/:number`
 - `https://diff-kit.com/:owner/:repo/pull/:number`
 - `https://github.com/:owner/:repo/pull/:number/changes`
 - `https://diff-kit.com/:owner/:repo/review/:number`
 - `https://github.com/:owner/:repo/issues/:number`
 - `https://diff-kit.com/:owner/:repo/issues/:number`
+- `https://github.com/:owner` (profile; excludes global pages like `/pulls`, `/explore`, etc.)
+- `https://diff-kit.com/:owner`
 
 ## Rule format
 
