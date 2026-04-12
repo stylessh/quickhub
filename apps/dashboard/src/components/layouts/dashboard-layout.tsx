@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { lazy, Suspense } from "react";
 import {
 	githubMyIssuesQueryOptions,
@@ -7,9 +8,11 @@ import {
 } from "#/lib/github.query";
 import { useGitHubRevalidation } from "#/lib/use-github-revalidation";
 import { useHasMounted } from "#/lib/use-has-mounted";
+import { useMediaQuery } from "#/lib/use-media-query";
 import { DashboardBottomBar } from "./dashboard-bottombar";
 import { DashboardMobileNav } from "./dashboard-mobile-nav";
 import {
+	SIDE_PANEL_WIDTH,
 	SidePanelProvider,
 	SidePanelSlot,
 	SidePanelToggle,
@@ -61,6 +64,8 @@ export function DashboardLayout() {
 	const tabsReady = hasMounted && Boolean(pullsQuery.data && issuesQuery.data);
 
 	const sidePanel = useSidePanelSlot();
+	const isXl = useMediaQuery("(min-width: 1280px)");
+	const showPanel = isXl && sidePanel.hasContent && !sidePanel.collapsed;
 
 	return (
 		<div className="isolate flex h-dvh flex-col bg-muted">
@@ -83,19 +88,29 @@ export function DashboardLayout() {
 					toggle: sidePanel.toggle,
 				}}
 			>
-				<div className="flex flex-1 overflow-hidden p-2 pt-0">
-					<div className="relative flex-1 overflow-hidden rounded-xl border bg-card shadow-[0_1px_4px_0_rgba(0,0,0,0.03)]">
+				<motion.div
+					initial={false}
+					animate={{
+						gridTemplateColumns: showPanel
+							? `minmax(0, 1fr) ${SIDE_PANEL_WIDTH}px`
+							: "minmax(0, 1fr) 0px",
+					}}
+					transition={{ type: "spring", stiffness: 400, damping: 35 }}
+					className="grid flex-1 overflow-hidden p-2 pt-0"
+				>
+					<div className="relative overflow-hidden rounded-xl border bg-card shadow-[0_1px_4px_0_rgba(0,0,0,0.03)]">
 						<div className="h-full">
 							<Outlet />
 						</div>
 						<SidePanelToggle />
 					</div>
+
 					<SidePanelSlot
 						slotRef={sidePanel.setNode}
 						collapsed={sidePanel.collapsed}
 						onHasContent={sidePanel.setHasContent}
 					/>
-				</div>
+				</motion.div>
 			</SidePanelProvider>
 			<DashboardBottomBar />
 			<DashboardMobileNav

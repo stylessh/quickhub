@@ -10,6 +10,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+// w-72 (288px) + pl-2 (8px)
+export const SIDE_PANEL_WIDTH = 296;
+
 type SidePanelState = {
 	node: HTMLDivElement | null;
 	collapsed: boolean;
@@ -66,6 +69,8 @@ export function SidePanelSlot({
 }) {
 	const [hasChildren, setHasChildren] = useState(false);
 	const innerRef = useRef<HTMLDivElement | null>(null);
+	const ghostRef = useRef<HTMLDivElement | null>(null);
+	const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const refCallback = useCallback(
 		(el: HTMLDivElement | null) => {
@@ -86,31 +91,52 @@ export function SidePanelSlot({
 		};
 
 		check();
-		const observer = new MutationObserver(check);
+		const observer = new MutationObserver((mutations) => {
+			const has = el.childNodes.length > 0;
+
+			if (!has && ghostRef.current) {
+				// Content removed — clone into ghost for exit animation
+				ghostRef.current.innerHTML = "";
+				for (const mutation of mutations) {
+					for (const node of mutation.removedNodes) {
+						ghostRef.current.appendChild(node.cloneNode(true));
+					}
+				}
+				if (exitTimer.current) clearTimeout(exitTimer.current);
+				exitTimer.current = setTimeout(() => {
+					if (ghostRef.current) ghostRef.current.innerHTML = "";
+				}, 500);
+			} else if (has && ghostRef.current) {
+				// Content added — clear ghost
+				ghostRef.current.innerHTML = "";
+				if (exitTimer.current) clearTimeout(exitTimer.current);
+			}
+
+			setHasChildren(has);
+			onHasContent(has);
+		});
 		observer.observe(el, { childList: true });
 		el.addEventListener("sidepanel-content", check);
 		return () => {
 			observer.disconnect();
 			el.removeEventListener("sidepanel-content", check);
+			if (exitTimer.current) clearTimeout(exitTimer.current);
 		};
 	}, [onHasContent]);
 
 	const show = hasChildren && !collapsed;
 
 	return (
-		<motion.div
-			animate={{ width: show ? "auto" : 0 }}
-			transition={{ type: "spring", stiffness: 400, damping: 35 }}
-			className="hidden shrink-0 overflow-hidden xl:block"
-		>
+		<div className="hidden overflow-hidden xl:block">
 			<motion.div
 				animate={{ opacity: show ? 1 : 0 }}
 				transition={{ duration: show ? 0.2 : 0.1, delay: show ? 0.1 : 0 }}
 				className="h-full overflow-y-auto overflow-x-hidden pb-2 pl-2"
 			>
 				<div ref={refCallback} />
+				<div ref={ghostRef} className="pointer-events-none" aria-hidden />
 			</motion.div>
-		</motion.div>
+		</div>
 	);
 }
 
