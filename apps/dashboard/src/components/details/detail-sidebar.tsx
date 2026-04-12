@@ -3,6 +3,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@diffkit/ui/components/tooltip";
+import { Link } from "@tanstack/react-router";
 
 type DetailRowIcon = React.ComponentType<{
 	size?: number;
@@ -68,12 +69,18 @@ export function DetailParticipantAvatars({
 			{actors.map((actor, index) => (
 				<Tooltip key={actor.login}>
 					<TooltipTrigger asChild>
-						<img
-							src={actor.avatarUrl}
-							alt={actor.login}
-							className="size-6 rounded-full border-2 border-card transition-[margin] duration-200 group-hover/participants:ml-0"
+						<Link
+							to="/$owner"
+							params={{ owner: actor.login }}
 							style={index > 0 ? { marginLeft: -6 } : undefined}
-						/>
+							className="relative block transition-[margin] duration-200 group-hover/participants:ml-0"
+						>
+							<img
+								src={actor.avatarUrl}
+								alt={actor.login}
+								className="size-6 rounded-full border-2 border-card"
+							/>
+						</Link>
 					</TooltipTrigger>
 					<TooltipContent>{actor.login}</TooltipContent>
 				</Tooltip>
