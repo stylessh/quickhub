@@ -24,6 +24,7 @@
 		"@cloudflare/vite-plugin": "^1.26.0",
 		"@diffkit/icons": "workspace:*",
 		"@diffkit/ui": "workspace:*",
+		"@number-flow/react": "^0.6.0",
 		"@pierre/diffs": "^1.1.12",
 		"@tailwindcss/vite": "^4.1.18",
 		"@tanstack/react-devtools": "~0.10.2",
