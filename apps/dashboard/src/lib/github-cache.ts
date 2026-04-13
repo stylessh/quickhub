@@ -264,6 +264,18 @@ function isGitHubRateLimitError(error: unknown) {
 	return retryAfter !== null || remaining === 0 || statusCode === 429;
 }
 
+/** 30 s — short so the data refreshes once the user configures access. */
+const GITHUB_STALE_IF_FORBIDDEN_MS = 30_000;
+
+function isGitHubForbiddenError(error: unknown) {
+	const msg = error instanceof Error ? error.message : String(error ?? "");
+	return (
+		msg.includes("OAuth App access restrictions") ||
+		msg.includes("FORBIDDEN") ||
+		msg.includes("Resource not accessible by integration")
+	);
+}
+
 function getRateLimitedStaleFreshUntil(currentTime: number, error: unknown) {
 	const headers = normalizeUnknownHeaders(getErrorResponseHeaders(error));
 	const retryAfterSeconds = parseNullableInt(headers["retry-after"]);
@@ -706,6 +718,24 @@ export async function getOrRevalidateGitHubResource<TData>({
 				const staleEntry = {
 					...existingEntry,
 					freshUntil: getRateLimitedStaleFreshUntil(currentTime, error),
+					statusCode: getErrorStatusCode(error) ?? existingEntry.statusCode,
+				};
+
+				await persistGitHubCacheEntry({
+					entry: staleEntry,
+					legacyStore: await getResolvedStore(),
+					payloadStore: resolvedPayloadStore,
+					payloadStorageKey,
+					payloadRetentionSeconds,
+				});
+
+				return parseCachedPayload<TData>(existingEntry.payloadJson);
+			}
+
+			if (existingEntry && isGitHubForbiddenError(error)) {
+				const staleEntry = {
+					...existingEntry,
+					freshUntil: currentTime + GITHUB_STALE_IF_FORBIDDEN_MS,
 					statusCode: getErrorStatusCode(error) ?? existingEntry.statusCode,
 				};
 

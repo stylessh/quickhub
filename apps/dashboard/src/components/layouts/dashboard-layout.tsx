@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
 	githubMyIssuesQueryOptions,
 	githubMyPullsQueryOptions,
 } from "#/lib/github.query";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { useMediaQuery } from "#/lib/use-media-query";
+import { surfaceForbiddenOrgWarnings } from "#/lib/warning-store";
 import { DashboardBottomBar } from "./dashboard-bottombar";
 import { DashboardMobileNav } from "./dashboard-mobile-nav";
 import {
@@ -50,6 +51,13 @@ export function DashboardLayout() {
 		...githubMyIssuesQueryOptions(scope),
 		enabled: hasMounted,
 	});
+	useEffect(() => {
+		surfaceForbiddenOrgWarnings(pullsQuery.data?.forbiddenOrgs);
+	}, [pullsQuery.data?.forbiddenOrgs]);
+	useEffect(() => {
+		surfaceForbiddenOrgWarnings(issuesQuery.data?.forbiddenOrgs);
+	}, [issuesQuery.data?.forbiddenOrgs]);
+
 	const pullCount =
 		hasMounted && pullsQuery.data
 			? pullsQuery.data.reviewRequested.length +
