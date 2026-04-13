@@ -68,6 +68,6 @@ export {
   ViewIcon,
   WifiDisconnected01Icon as WifiOffIcon,
 } from "@hugeicons/react";
-export { GitHubLogo, GitHubWordmarkLogo } from "./brand-logos";
+export { GitHubLogo, GitHubWordmarkLogo, XLogo } from "./brand-logos";
 export { PenIcon } from "./pen-icon";
 export { SeparatorHorizontalIcon } from "./separator-horizontal-icon";

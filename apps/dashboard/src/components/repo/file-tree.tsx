@@ -29,7 +29,7 @@ function FileTreeRow({
 	return (
 		<div
 			className={cn(
-				"grid grid-cols-[200px_minmax(0,1fr)_80px] items-center gap-4 px-4 py-2 text-sm hover:bg-surface-0",
+				"grid grid-cols-[200px_minmax(0,1fr)_80px] items-center gap-4 px-4 py-2 text-sm hover:bg-surface-1",
 				!isLast && "border-b",
 			)}
 		>
