@@ -2,6 +2,7 @@ import { Md } from "@m2d/react-markdown/client";
 import { Suspense, use, useCallback, useRef, useState } from "react";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+import { remarkAlert } from "remark-github-blockquote-alert";
 import type { BundledLanguage, Highlighter } from "shiki";
 import { vercelDark, vercelLight } from "../lib/shiki-themes";
 import { cn } from "../lib/utils";
@@ -140,7 +141,7 @@ function ShikiCode({ code, lang }: { code: string; lang: string }) {
 		<Suspense
 			fallback={
 				<div className="group/code relative mb-2">
-					<pre className="overflow-x-auto rounded-lg bg-surface-1 p-3 text-xs">
+					<pre className="overflow-x-auto rounded-lg bg-surface-1 p-3 text-xs text-foreground">
 						<code>{code}</code>
 					</pre>
 				</div>
@@ -200,7 +201,7 @@ const components: Record<string, React.FC<any>> = {
 	),
 	ul: ({ node: _, children, ...props }) => (
 		<ul
-			className="text-sm list-disc pl-5 mb-2 flex flex-col gap-0.5"
+			className="text-sm list-disc pl-5 mb-2 flex flex-col gap-1.5"
 			{...props}
 		>
 			{children}
@@ -208,7 +209,7 @@ const components: Record<string, React.FC<any>> = {
 	),
 	ol: ({ node: _, children, ...props }) => (
 		<ol
-			className="text-sm list-decimal pl-5 mb-2 flex flex-col gap-0.5"
+			className="text-sm list-decimal pl-5 mb-2 flex flex-col gap-1.5"
 			{...props}
 		>
 			{children}
@@ -256,7 +257,7 @@ const components: Record<string, React.FC<any>> = {
 		}
 		return (
 			<pre
-				className="overflow-x-auto rounded-lg bg-surface-1 p-3 text-xs mb-2"
+				className="overflow-x-auto rounded-lg bg-surface-1 p-3 text-xs mb-2 text-foreground"
 				{...props}
 			>
 				{children}
@@ -274,7 +275,7 @@ const components: Record<string, React.FC<any>> = {
 		/>
 	),
 	table: ({ node: _, children, ...props }) => (
-		<div className="overflow-hidden mb-2 rounded-lg border border-border bg-surface-0">
+		<div className="flex flex-col overflow-hidden mb-2 rounded-lg border border-border bg-surface-0">
 			<table className="w-full text-sm border-collapse" {...props}>
 				{children}
 			</table>
@@ -368,9 +369,9 @@ export function Markdown({
 	className?: string;
 }) {
 	return (
-		<div className={cn("text-foreground", className)}>
+		<div className={cn("not-prose text-foreground", className)}>
 			<Md
-				remarkPlugins={[remarkGfm]}
+				remarkPlugins={[remarkGfm, remarkAlert]}
 				rehypePlugins={[rehypeRaw]}
 				components={components}
 			>

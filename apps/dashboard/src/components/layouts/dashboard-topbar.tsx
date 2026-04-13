@@ -1,4 +1,6 @@
 import {
+	BugIcon,
+	ExternalLinkIcon,
 	GitPullRequestIcon,
 	HomeIcon,
 	IssuesIcon,
@@ -7,6 +9,7 @@ import {
 	ReviewsIcon,
 	SettingsIcon,
 	UserCircleIcon,
+	XLogo,
 } from "@diffkit/icons";
 import { Avatar, AvatarFallback } from "@diffkit/ui/components/avatar";
 import { Button } from "@diffkit/ui/components/button";
@@ -300,13 +303,50 @@ export function DashboardTopbar({
 			</div>
 
 			<div className="hidden shrink-0 md:block">
-				<Button
-					variant="ghost"
-					size="icon"
-					iconLeft={<MoreHorizontalIcon className="size-5" strokeWidth={2} />}
-					className="size-8 text-muted-foreground hover:bg-surface-1"
-					aria-label="More actions"
-				/>
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							iconLeft={
+								<MoreHorizontalIcon className="size-5" strokeWidth={2} />
+							}
+							className="size-8 text-muted-foreground hover:bg-surface-1"
+							aria-label="More actions"
+						/>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-48">
+						<DropdownMenuItem asChild>
+							<Link
+								to="/$owner/$repo"
+								params={{ owner: "stylessh", repo: "diffkit" }}
+							>
+								<ExternalLinkIcon size={16} strokeWidth={2} />
+								View GitHub repo
+							</Link>
+						</DropdownMenuItem>
+						<DropdownMenuItem asChild>
+							<Link
+								to="/$owner/$repo/issues/new"
+								params={{ owner: "stylessh", repo: "diffkit" }}
+							>
+								<BugIcon size={16} strokeWidth={2} />
+								Report an issue
+							</Link>
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem asChild>
+							<a
+								href="https://x.com/stylesshDev"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<XLogo className="size-3.5" />
+								Check for updates
+							</a>
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
 		</nav>
 	);
