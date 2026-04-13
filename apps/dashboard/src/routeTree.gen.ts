@@ -29,7 +29,7 @@ import { Route as ProtectedOwnerRepoIndexRouteImport } from './routes/_protected
 import { Route as ApiGithubAppCallbackRouteImport } from './routes/api/github/app/callback'
 import { Route as ApiGithubAppAuthorizeRouteImport } from './routes/api/github/app/authorize'
 import { Route as ProtectedOwnerRepoPullsRouteImport } from './routes/_protected/$owner/$repo/pulls'
-import { Route as ProtectedOwnerRepoIssuesRouteImport } from './routes/_protected/$owner/$repo/issues'
+import { Route as ProtectedOwnerRepoIssuesIndexRouteImport } from './routes/_protected/$owner/$repo/issues.index'
 import { Route as ProtectedOwnerRepoReviewPullIdRouteImport } from './routes/_protected/$owner/$repo/review.$pullId'
 import { Route as ProtectedOwnerRepoPullPullIdRouteImport } from './routes/_protected/$owner/$repo/pull.$pullId'
 import { Route as ProtectedOwnerRepoIssuesNewRouteImport } from './routes/_protected/$owner/$repo/issues.new'
@@ -135,10 +135,10 @@ const ProtectedOwnerRepoPullsRoute = ProtectedOwnerRepoPullsRouteImport.update({
   path: '/$owner/$repo/pulls',
   getParentRoute: () => ProtectedRoute,
 } as any)
-const ProtectedOwnerRepoIssuesRoute =
-  ProtectedOwnerRepoIssuesRouteImport.update({
-    id: '/$owner/$repo/issues',
-    path: '/$owner/$repo/issues',
+const ProtectedOwnerRepoIssuesIndexRoute =
+  ProtectedOwnerRepoIssuesIndexRouteImport.update({
+    id: '/$owner/$repo/issues/',
+    path: '/$owner/$repo/issues/',
     getParentRoute: () => ProtectedRoute,
   } as any)
 const ProtectedOwnerRepoReviewPullIdRoute =
@@ -182,15 +182,15 @@ export interface FileRoutesByFullPath {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/$owner/': typeof ProtectedOwnerIndexRoute
   '/settings/': typeof ProtectedSettingsIndexRoute
+  '/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/api/github/app/authorize': typeof ApiGithubAppAuthorizeRoute
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/$owner/$repo/': typeof ProtectedOwnerRepoIndexRoute
-  '/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesRoute
-  '/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
+  '/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
 }
 export interface FileRoutesByTo {
   '/$': typeof SplatRoute
@@ -207,15 +207,15 @@ export interface FileRoutesByTo {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/$owner': typeof ProtectedOwnerIndexRoute
   '/settings': typeof ProtectedSettingsIndexRoute
+  '/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/api/github/app/authorize': typeof ApiGithubAppAuthorizeRoute
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/$owner/$repo': typeof ProtectedOwnerRepoIndexRoute
-  '/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesRoute
-  '/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
+  '/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -235,15 +235,15 @@ export interface FileRoutesById {
   '/api/webhooks/github': typeof ApiWebhooksGithubRoute
   '/_protected/$owner/': typeof ProtectedOwnerIndexRoute
   '/_protected/settings/': typeof ProtectedSettingsIndexRoute
+  '/_protected/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/api/github/app/authorize': typeof ApiGithubAppAuthorizeRoute
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/_protected/$owner/$repo/': typeof ProtectedOwnerRepoIndexRoute
-  '/_protected/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesRoute
-  '/_protected/$owner/$repo/pulls': typeof ProtectedOwnerRepoPullsRoute
   '/_protected/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/_protected/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/_protected/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/_protected/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
+  '/_protected/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -263,15 +263,15 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/$owner/'
     | '/settings/'
+    | '/$owner/$repo/pulls'
     | '/api/github/app/authorize'
     | '/api/github/app/callback'
     | '/$owner/$repo/'
-    | '/$owner/$repo/issues'
-    | '/$owner/$repo/pulls'
     | '/$owner/$repo/issues/$issueId'
     | '/$owner/$repo/issues/new'
     | '/$owner/$repo/pull/$pullId'
     | '/$owner/$repo/review/$pullId'
+    | '/$owner/$repo/issues/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$'
@@ -288,15 +288,15 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/$owner'
     | '/settings'
+    | '/$owner/$repo/pulls'
     | '/api/github/app/authorize'
     | '/api/github/app/callback'
     | '/$owner/$repo'
-    | '/$owner/$repo/issues'
-    | '/$owner/$repo/pulls'
     | '/$owner/$repo/issues/$issueId'
     | '/$owner/$repo/issues/new'
     | '/$owner/$repo/pull/$pullId'
     | '/$owner/$repo/review/$pullId'
+    | '/$owner/$repo/issues'
   id:
     | '__root__'
     | '/$'
@@ -315,15 +315,15 @@ export interface FileRouteTypes {
     | '/api/webhooks/github'
     | '/_protected/$owner/'
     | '/_protected/settings/'
+    | '/_protected/$owner/$repo/pulls'
     | '/api/github/app/authorize'
     | '/api/github/app/callback'
     | '/_protected/$owner/$repo/'
-    | '/_protected/$owner/$repo/issues'
-    | '/_protected/$owner/$repo/pulls'
     | '/_protected/$owner/$repo/issues/$issueId'
     | '/_protected/$owner/$repo/issues/new'
     | '/_protected/$owner/$repo/pull/$pullId'
     | '/_protected/$owner/$repo/review/$pullId'
+    | '/_protected/$owner/$repo/issues/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -481,11 +481,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedOwnerRepoPullsRouteImport
       parentRoute: typeof ProtectedRoute
     }
-    '/_protected/$owner/$repo/issues': {
-      id: '/_protected/$owner/$repo/issues'
+    '/_protected/$owner/$repo/issues/': {
+      id: '/_protected/$owner/$repo/issues/'
       path: '/$owner/$repo/issues'
-      fullPath: '/$owner/$repo/issues'
-      preLoaderRoute: typeof ProtectedOwnerRepoIssuesRouteImport
+      fullPath: '/$owner/$repo/issues/'
+      preLoaderRoute: typeof ProtectedOwnerRepoIssuesIndexRouteImport
       parentRoute: typeof ProtectedRoute
     }
     '/_protected/$owner/$repo/review/$pullId': {
@@ -539,13 +539,13 @@ interface ProtectedRouteChildren {
   ProtectedSettingsRoute: typeof ProtectedSettingsRouteWithChildren
   ProtectedIndexRoute: typeof ProtectedIndexRoute
   ProtectedOwnerIndexRoute: typeof ProtectedOwnerIndexRoute
-  ProtectedOwnerRepoIssuesRoute: typeof ProtectedOwnerRepoIssuesRoute
   ProtectedOwnerRepoPullsRoute: typeof ProtectedOwnerRepoPullsRoute
   ProtectedOwnerRepoIndexRoute: typeof ProtectedOwnerRepoIndexRoute
   ProtectedOwnerRepoIssuesIssueIdRoute: typeof ProtectedOwnerRepoIssuesIssueIdRoute
   ProtectedOwnerRepoIssuesNewRoute: typeof ProtectedOwnerRepoIssuesNewRoute
   ProtectedOwnerRepoPullPullIdRoute: typeof ProtectedOwnerRepoPullPullIdRoute
   ProtectedOwnerRepoReviewPullIdRoute: typeof ProtectedOwnerRepoReviewPullIdRoute
+  ProtectedOwnerRepoIssuesIndexRoute: typeof ProtectedOwnerRepoIssuesIndexRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
@@ -555,13 +555,13 @@ const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedSettingsRoute: ProtectedSettingsRouteWithChildren,
   ProtectedIndexRoute: ProtectedIndexRoute,
   ProtectedOwnerIndexRoute: ProtectedOwnerIndexRoute,
-  ProtectedOwnerRepoIssuesRoute: ProtectedOwnerRepoIssuesRoute,
   ProtectedOwnerRepoPullsRoute: ProtectedOwnerRepoPullsRoute,
   ProtectedOwnerRepoIndexRoute: ProtectedOwnerRepoIndexRoute,
   ProtectedOwnerRepoIssuesIssueIdRoute: ProtectedOwnerRepoIssuesIssueIdRoute,
   ProtectedOwnerRepoIssuesNewRoute: ProtectedOwnerRepoIssuesNewRoute,
   ProtectedOwnerRepoPullPullIdRoute: ProtectedOwnerRepoPullPullIdRoute,
   ProtectedOwnerRepoReviewPullIdRoute: ProtectedOwnerRepoReviewPullIdRoute,
+  ProtectedOwnerRepoIssuesIndexRoute: ProtectedOwnerRepoIssuesIndexRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(
