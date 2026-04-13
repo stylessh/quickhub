@@ -1337,6 +1337,22 @@ async function executeGitHubGraphQL<TResponse>(
 	);
 }
 
+/**
+ * Extract an organization name from a GitHub FORBIDDEN/OAuth App access
+ * restriction error.  Returns `null` when the error is unrelated.
+ */
+function extractForbiddenOrg(error: unknown): string | null {
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	if (
+		!message.includes("OAuth App access restrictions") &&
+		!message.includes("FORBIDDEN")
+	) {
+		return null;
+	}
+	const match = message.match(/the `([^`]+)` organization/);
+	return match?.[1] ?? null;
+}
+
 async function safeCommandPaletteSearch<T>({
 	fallback,
 	label,
@@ -3964,6 +3980,7 @@ async function getMyPullsResult({
 			const sources = await getMySearchSources(context, username, deadlineAt);
 			const results: MyPullsResult[] = [];
 			const rateLimits: GitHubGraphQLRateLimit[] = [];
+			const forbiddenOrgs: string[] = [];
 
 			for (const source of sources) {
 				const sourceTimeoutMs = getRemainingSearchTimeoutMs(
@@ -4101,12 +4118,19 @@ async function getMyPullsResult({
 						source.label,
 						error,
 					);
+					const org = extractForbiddenOrg(error);
+					if (org) forbiddenOrgs.push(org);
 				}
+			}
+
+			const data = mergeMyPullsResults(results);
+			if (forbiddenOrgs.length > 0) {
+				data.forbiddenOrgs = [...new Set(forbiddenOrgs)];
 			}
 
 			return {
 				kind: "success",
-				data: mergeMyPullsResults(results),
+				data,
 				metadata: createGraphQLResponseMetadata(
 					mergeGraphQLRateLimits(rateLimits),
 				),
@@ -4135,6 +4159,7 @@ async function getMyIssuesResult({
 			const sources = await getMySearchSources(context, username, deadlineAt);
 			const results: MyIssuesResult[] = [];
 			const rateLimits: GitHubGraphQLRateLimit[] = [];
+			const forbiddenOrgs: string[] = [];
 
 			for (const source of sources) {
 				const sourceTimeoutMs = getRemainingSearchTimeoutMs(
@@ -4247,12 +4272,19 @@ async function getMyIssuesResult({
 						source.label,
 						error,
 					);
+					const org = extractForbiddenOrg(error);
+					if (org) forbiddenOrgs.push(org);
 				}
+			}
+
+			const data = mergeMyIssuesResults(results);
+			if (forbiddenOrgs.length > 0) {
+				data.forbiddenOrgs = [...new Set(forbiddenOrgs)];
 			}
 
 			return {
 				kind: "success",
-				data: mergeMyIssuesResults(results),
+				data,
 				metadata: createGraphQLResponseMetadata(
 					mergeGraphQLRateLimits(rateLimits),
 				),

@@ -28,7 +28,7 @@ import {
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
 import { PullRequestRow } from "#/components/pulls/pull-request-row";
 import { githubMyPullsQueryOptions } from "#/lib/github.query";
-import type { MyPullsResult, PullSummary } from "#/lib/github.types";
+import type { PullSummary } from "#/lib/github.types";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
 import { useHasMounted } from "#/lib/use-has-mounted";
 
@@ -180,7 +180,7 @@ type PullGroupData = {
 	id: string;
 	title: string;
 	icon: ComponentType<{ size?: number; strokeWidth?: number }>;
-	pulls: MyPullsResult[keyof MyPullsResult];
+	pulls: PullSummary[];
 };
 
 const PULL_GROUP_STICKY_TOP = -32;

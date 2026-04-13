@@ -55,6 +55,27 @@ export function useWarnings() {
 }
 
 /**
+ * Surface warnings for organizations that returned FORBIDDEN due to
+ * OAuth App access restrictions during search queries.
+ */
+export function surfaceForbiddenOrgWarnings(orgs: string[] | undefined) {
+	if (!orgs || orgs.length === 0) return;
+
+	for (const org of orgs) {
+		addWarning({
+			id: `forbidden-org:${org}`,
+			message: `The ${org} organization has restricted third-party access. Configure access to include its repositories.`,
+			dismissible: true,
+			action: {
+				kind: "github-access",
+				label: "Configure access",
+				owner: org,
+			},
+		});
+	}
+}
+
+/**
  * Check a MutationResult for permission errors and surface a warning.
  * Call this client-side after a mutation returns.
  */

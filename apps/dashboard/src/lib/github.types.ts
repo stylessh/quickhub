@@ -113,12 +113,14 @@ export type MyPullsResult = {
 	authored: PullSummary[];
 	mentioned: PullSummary[];
 	involved: PullSummary[];
+	forbiddenOrgs?: string[];
 };
 
 export type MyIssuesResult = {
 	assigned: IssueSummary[];
 	authored: IssueSummary[];
 	mentioned: IssueSummary[];
+	forbiddenOrgs?: string[];
 };
 
 export type CommandPaletteSearchResult = {

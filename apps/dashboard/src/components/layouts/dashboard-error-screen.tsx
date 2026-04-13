@@ -13,9 +13,10 @@ import {
 	Link,
 	useRouter,
 } from "@tanstack/react-router";
-import type { ComponentType } from "react";
+import { type ComponentType, useEffect } from "react";
 import { useShowOrgSetupQueryState } from "#/lib/github-access-dialog-query";
 import { openGitHubAccessPrompt } from "#/lib/github-access-modal-store";
+import { surfaceForbiddenOrgWarnings } from "#/lib/warning-store";
 
 type ErrorInfo = {
 	icon: ComponentType<{ size?: number; strokeWidth?: number }>;
@@ -126,6 +127,16 @@ export function DashboardErrorScreen({ error, reset }: ErrorComponentProps) {
 	} = getErrorInfo(error);
 	const isNotFound = action === "go-home";
 	const detail = isNotFound ? null : cleanErrorMessage(error.message);
+
+	useEffect(() => {
+		if (action !== "configure-access") return;
+		const msg = error.message;
+		const orgMatch = msg.match(/the `([^`]+)` organization/);
+		const orgs = orgMatch ? [orgMatch[1]] : null;
+		if (orgs) {
+			surfaceForbiddenOrgWarnings(orgs);
+		}
+	}, [action, error.message]);
 
 	return (
 		<div className="flex h-full items-center justify-center px-6 py-16">

@@ -22,7 +22,7 @@ import {
 import { IssueRow } from "#/components/issues/issue-row";
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
 import { githubMyIssuesQueryOptions } from "#/lib/github.query";
-import type { IssueSummary, MyIssuesResult } from "#/lib/github.types";
+import type { IssueSummary } from "#/lib/github.types";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
 import { useHasMounted } from "#/lib/use-has-mounted";
 
@@ -149,7 +149,7 @@ type IssueGroupData = {
 	id: string;
 	title: string;
 	icon: ComponentType<{ size?: number; strokeWidth?: number }>;
-	issues: MyIssuesResult[keyof MyIssuesResult];
+	issues: IssueSummary[];
 };
 
 const ISSUE_GROUP_STICKY_TOP = -32;
