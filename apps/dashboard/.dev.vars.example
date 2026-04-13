@@ -1,48 +1,101 @@
-# GitHub OAuth App credentials (used for user authentication)
-# 1. Go to https://github.com/settings/developers > OAuth Apps > New OAuth App
-# 2. Set the callback URL to http://localhost:3000/api/auth/callback/github
-# 3. Note the Client ID and generate a Client Secret
-# OAuth App tokens support scopes (repo, read:org, user:email) and don't expire.
-# Used for login plus public/external repository reads where the GitHub App is not installed.
+# =============================================================================
+# DiffKit — Local Development Environment Variables
+# =============================================================================
+# Copy this file to .dev.vars and fill in the values.
+# NEVER commit .dev.vars — it contains secrets.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. GitHub OAuth App (user authentication)
+# -----------------------------------------------------------------------------
+# Creates user sessions and provides broad-scope reads (repo, read:org, user:email).
+# Also used as fallback for repositories where the GitHub App is not installed.
+#
+# How to get these:
+#   1. Go to https://github.com/settings/developers → OAuth Apps → New OAuth App
+#   2. Set "Authorization callback URL" to http://localhost:3000/api/auth/callback/github
+#   3. Copy the Client ID below
+#   4. Generate a Client Secret and copy it below
 GITHUB_OAUTH_CLIENT_ID=
 GITHUB_OAUTH_CLIENT_SECRET=
 
-# GitHub App credentials (used for installation discovery and app-scoped repo access)
-# 1. Go to https://github.com/settings/apps
-# 2. Create a new GitHub App (or use an existing one)
-# 3. Set the callback URL to http://localhost:3000/api/github/app/callback
-# 4. Set the setup URL to http://localhost:3000/?show-org-setup=true
-# 5. Enable "Redirect on update"
-# 6. Leave "Request user authorization (OAuth) during installation" unchecked
-# 7. Under Permissions & events, grant the permissions listed in the README
-# 8. Install the app on the repositories or organizations you want DiffKit to access
-GITHUB_APP_CLIENT_ID=
-GITHUB_APP_CLIENT_SECRET=
-# Numeric App ID from the GitHub App settings page
-GITHUB_APP_ID=
-# Private key generated from the GitHub App settings page.
-# Store as a quoted value with escaped newlines:
-# GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
-# GitHub commonly downloads PKCS#1 ("BEGIN RSA PRIVATE KEY"); DiffKit normalizes it for Octokit at runtime.
-GITHUB_APP_PRIVATE_KEY=
-# The slug from your GitHub App URL (https://github.com/apps/<slug>)
-GITHUB_APP_SLUG=
-
-# GitHub webhook secret used to verify deliveries to /api/webhooks/github
-# For local development, point your GitHub App webhook URL at a tunnel that forwards here.
-GITHUB_WEBHOOK_SECRET=
-
-# Optional: full tunnel URL used by Vite dev server to allow webhook traffic and HMR
-# Example: https://your-subdomain.ngrok-free.app
-DEV_TUNNEL_URL=
-
-# Legacy OAuth-style names are still supported as a fallback for GITHUB_OAUTH_* during migration.
+# Legacy aliases — still supported as a fallback during migration.
+# You only need to set one pair (GITHUB_OAUTH_* or GITHUB_*), not both.
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
-# Random secret for encrypting sessions (at least 32 characters)
+# -----------------------------------------------------------------------------
+# 2. GitHub App (webhooks, installation tokens, app-scoped repo access)
+# -----------------------------------------------------------------------------
+# Provides installation tokens for repos where the app is installed,
+# user-to-server tokens for installation discovery, and webhook delivery.
+#
+# How to get these:
+#   1. Go to https://github.com/settings/apps → New GitHub App
+#   2. Set "Callback URL" to http://localhost:3000/api/github/app/callback
+#   3. Set "Setup URL" to http://localhost:3000/?show-org-setup=true
+#   4. Check "Redirect on update"
+#   5. Leave "Request user authorization (OAuth) during installation" UNCHECKED
+#   6. Grant the permissions listed in the README
+#   7. Subscribe to the webhook events listed in the README
+#   8. Install the app on your repos or orgs
+
+# Client ID shown on the GitHub App settings page (starts with "Iv1.")
+GITHUB_APP_CLIENT_ID=
+
+# Client secret — generate one from the GitHub App settings page
+GITHUB_APP_CLIENT_SECRET=
+
+# Numeric App ID shown at the top of the GitHub App settings page
+GITHUB_APP_ID=
+
+# Private key for signing JWTs to authenticate as the GitHub App.
+# Generate one from the GitHub App settings page → "Private keys" → "Generate a private key".
+# Store as a single-line value with literal \n for newlines:
+#   GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n"
+#
+# Quick conversion from the downloaded .pem file:
+#   awk 'NF {printf "%s\\n", $0}' /path/to/key.pem
+#
+# GitHub downloads PKCS#1 keys ("BEGIN RSA PRIVATE KEY"); DiffKit auto-converts
+# to PKCS#8 at runtime — no manual conversion needed.
+GITHUB_APP_PRIVATE_KEY=
+
+# The slug from your GitHub App URL: https://github.com/apps/<slug>
+GITHUB_APP_SLUG=
+
+# -----------------------------------------------------------------------------
+# 3. Webhooks
+# -----------------------------------------------------------------------------
+# Secret used to verify webhook payloads from GitHub (HMAC-SHA256).
+# Set the same value in your GitHub App settings under "Webhook secret".
+#
+# Generate one with: openssl rand -hex 20
+GITHUB_WEBHOOK_SECRET=
+
+# -----------------------------------------------------------------------------
+# 4. Auth & sessions
+# -----------------------------------------------------------------------------
+# Random secret used by Better Auth to encrypt session cookies.
+# Must be at least 32 characters.
+#
 # Generate one with: openssl rand -base64 32
 BETTER_AUTH_SECRET=
 
-# Base URL for the auth server
+# Base URL where DiffKit is running. Used by Better Auth for redirects.
 BETTER_AUTH_URL=http://localhost:3000
+
+# -----------------------------------------------------------------------------
+# 5. Local development (optional)
+# -----------------------------------------------------------------------------
+# Public tunnel URL for receiving webhooks locally (e.g. ngrok, cloudflared).
+# The dev server uses this to allow the tunnel host and configure HMR.
+#
+# Example: https://your-subdomain.ngrok-free.app
+#
+# To set up:
+#   1. Run your tunnel: ngrok http 3000
+#   2. Copy the public URL here
+#   3. Set the same URL as the webhook URL in your GitHub App settings,
+#      appending /api/webhooks/github
+DEV_TUNNEL_URL=

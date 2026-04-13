@@ -33,136 +33,160 @@ A fast, design-first GitHub dashboard for developers who want to stay on top of 
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v20+)
-- [pnpm](https://pnpm.io/) (v10+)
-- A [GitHub OAuth App](https://github.com/settings/developers) (for user authentication)
-- A [GitHub App](https://github.com/settings/apps) (for webhooks and installation management)
+- [Node.js](https://nodejs.org/) v20+
+- [pnpm](https://pnpm.io/) v10+
 
-### Setup
+### 1. Clone and install
 
-1. **Clone the repo**
+```bash
+git clone https://github.com/stylessh/diffkit.git
+cd diffkit
+pnpm install
+```
 
+### 2. Create a GitHub OAuth App
+
+The OAuth App handles user login and broad-scope reads (`repo`, `read:org`, `user:email`). It's also the fallback for repositories where the GitHub App is not installed.
+
+1. Go to [GitHub OAuth App settings](https://github.com/settings/developers) and click **New OAuth App**
+2. Fill in the form:
+   - **Application name**: DiffKit (local)
+   - **Homepage URL**: `http://localhost:3000`
+   - **Authorization callback URL**: `http://localhost:3000/api/auth/callback/github`
+3. Click **Register application**
+4. Copy the **Client ID**
+5. Click **Generate a new client secret** and copy it
+
+You'll need both values for your `.dev.vars` file in step 5.
+
+### 3. Create a GitHub App
+
+The GitHub App provides installation tokens for repo-scoped access, webhook delivery, and user-to-server tokens for installation discovery.
+
+1. Go to [GitHub App settings](https://github.com/settings/apps) and click **New GitHub App**
+2. Fill in the form:
+   - **GitHub App name**: DiffKit Dev (must be globally unique)
+   - **Homepage URL**: `http://localhost:3000`
+   - **Callback URL**: `http://localhost:3000/api/github/app/callback`
+   - **Setup URL**: `http://localhost:3000/?show-org-setup=true`
+   - Check **Redirect on update**
+   - Leave **Request user authorization (OAuth) during installation** **unchecked**
+   - **Webhook URL**: leave blank for now (see [Local webhook testing](#local-webhook-testing) below)
+
+3. Under **Permissions**, grant the following:
+
+   | Category | Permission | Level |
+   |----------|-----------|-------|
+   | Repository | Metadata | Read-only |
+   | Repository | Pull requests | Read & write |
+   | Repository | Issues | Read & write |
+   | Repository | Checks | Read-only |
+   | Repository | Actions | Read-only |
+   | Repository | Contents | Read & write |
+   | Organization | Members | Read-only |
+   | Account | Email addresses | Read-only |
+
+4. Under **Subscribe to events**, enable:
+   - Check run
+   - Check suite
+   - Issue comment
+   - Issues
+   - Pull request
+   - Pull request review
+   - Pull request review comment
+   - Pull request review thread
+
+5. Click **Create GitHub App**
+
+6. On the app settings page, note down:
+   - **App ID** (numeric, shown at the top)
+   - **Client ID** (starts with `Iv1.`)
+   - The **slug** from the app URL (`https://github.com/apps/<slug>`)
+
+7. Generate credentials:
+   - Click **Generate a new client secret** and copy it
+   - Under **Private keys**, click **Generate a private key** — a `.pem` file will download
+
+8. Convert the private key to a single-line format for `.dev.vars`:
    ```bash
-   git clone https://github.com/stylessh/diffkit.git
-   cd diffkit
+   awk 'NF {printf "%s\\n", $0}' /path/to/downloaded-key.pem
    ```
+   GitHub downloads PKCS#1 keys (`BEGIN RSA PRIVATE KEY`). DiffKit auto-converts to PKCS#8 at runtime.
 
-2. **Install dependencies**
+### 4. Install the GitHub App
 
+1. Go to your GitHub App's settings page → **Install App**
+2. Choose the user or organization you want DiffKit to access
+3. Select **All repositories** or pick specific ones
+4. Click **Install**
+
+### 5. Configure environment variables
+
+Copy the example file and fill in the values from steps 2–4:
+
+```bash
+cp apps/dashboard/.dev.vars.example apps/dashboard/.dev.vars
+```
+
+Open `apps/dashboard/.dev.vars` and fill in:
+
+```
+# From the OAuth App (step 2)
+GITHUB_OAUTH_CLIENT_ID=your_oauth_client_id
+GITHUB_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+
+# From the GitHub App (step 3)
+GITHUB_APP_CLIENT_ID=Iv1.your_app_client_id
+GITHUB_APP_CLIENT_SECRET=your_app_client_secret
+GITHUB_APP_ID=123456
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
+GITHUB_APP_SLUG=your-app-slug
+
+# Webhook secret (set the same value in your GitHub App settings)
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+
+# Generate with: openssl rand -base64 32
+BETTER_AUTH_SECRET=your_random_secret_at_least_32_chars
+BETTER_AUTH_URL=http://localhost:3000
+```
+
+> DiffKit also accepts the legacy `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` names as a fallback for the OAuth App credentials.
+
+### 6. Run database migrations
+
+```bash
+pnpm --filter dashboard migrate
+```
+
+### 7. Start the dev server
+
+```bash
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Local webhook testing
+
+To receive GitHub webhooks locally, you need a public tunnel:
+
+1. Start a tunnel (e.g. with [ngrok](https://ngrok.com/)):
    ```bash
-   pnpm install
+   ngrok http 3000
    ```
-
-3. **Configure environment variables**
-
-   Create a `.dev.vars` file in `apps/dashboard/`:
-
+2. Copy the public URL (e.g. `https://abc123.ngrok-free.app`)
+3. Add it to `apps/dashboard/.dev.vars`:
    ```
-   GITHUB_OAUTH_CLIENT_ID=your_oauth_app_client_id
-   GITHUB_OAUTH_CLIENT_SECRET=your_oauth_app_client_secret
-   GITHUB_APP_CLIENT_ID=your_github_app_client_id
-   GITHUB_APP_CLIENT_SECRET=your_github_app_client_secret
-   GITHUB_APP_ID=your_numeric_github_app_id
-   GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
-   GITHUB_APP_SLUG=your_github_app_slug
-   GITHUB_WEBHOOK_SECRET=your_github_webhook_secret
-   BETTER_AUTH_SECRET=a_random_32_character_string
-   BETTER_AUTH_URL=http://localhost:3000
+   DEV_TUNNEL_URL=https://abc123.ngrok-free.app
    ```
-
-   > DiffKit also accepts the legacy `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` names as a fallback for the OAuth App credentials during migration.
-
-4. **Create the GitHub OAuth App** (for user authentication)
-
-   In [OAuth App settings](https://github.com/settings/developers):
-
-   - Click **New OAuth App**
-   - Set the callback URL to `http://localhost:3000/api/auth/callback/github`
-   - Note the **Client ID** and generate a **Client Secret**
-
-   The OAuth App handles user login and broad user-context reads. DiffKit requests `repo`, `read:org`, and `user:email` scopes. OAuth is also the fallback path for public or external repositories where the GitHub App is not installed, such as upstream open source repositories.
-
-5. **Create and install the GitHub App** (for webhooks and installations)
-
-   In [GitHub App settings](https://github.com/settings/apps):
-
-   - Set the callback URL to `http://localhost:3000/api/github/app/callback`
-   - Set the setup URL to `http://localhost:3000/?show-org-setup=true`
-   - Enable **Redirect on update**
-   - Leave **Request user authorization (OAuth) during installation** unchecked
-   - Note the **Client ID**, generate a **Client Secret**, note the numeric **App ID**, and generate a private key
-   - Install the app on the repositories or organizations you want DiffKit to access
-
-   The GitHub App user authorization flow stores a `ghu_` user-to-server token for installation discovery. Repo-scoped reads and writes prefer GitHub App installation tokens when the app is installed, and fall back to OAuth for external/public repositories.
-
-   Store the downloaded private key as an escaped single-line value in `.dev.vars`. GitHub commonly downloads a PKCS#1 key with `BEGIN RSA PRIVATE KEY`; DiffKit normalizes it to the PKCS#8 format required by the GitHub App JWT library at runtime.
-
-   ```bash
-   printf 'GITHUB_APP_PRIVATE_KEY="' > /tmp/github-app-private-key.env
-   sed 's/$/\\n/' /path/to/github-app-private-key.pem | tr -d '\n' >> /tmp/github-app-private-key.env
-   printf '"\n' >> /tmp/github-app-private-key.env
-   cat /tmp/github-app-private-key.env
+4. In your GitHub App settings, set **Webhook URL** to:
    ```
-
-   Recommended GitHub App permissions derived from the current roadmap:
-
-   | Roadmap area | Roadmap items | GitHub App permission | Level | Notes |
-   | --- | --- | --- | --- | --- |
-   | Auth | Sign in and identify the user | User `Email addresses` | Read-only | Required for Better Auth to resolve the user's email address. |
-   | Core dashboard | Overview, repo list, repo search, private repo access | Repository `Metadata` | Read-only | Required baseline permission for repository-aware reads. |
-   | Pull requests | View/edit PRs, update branch, request reviewers, review diffs, merge, close/reopen, link issues | Repository `Pull requests` | Read & write | Required now for existing PR mutations and future PR management. |
-   | Issues | View/create/edit/close issues, labels, milestones, comments | Repository `Issues` | Read & write | Required now for current label mutations and future issue workflows. |
-   | CI and review status | PR checks, CI-aware review flows, CI notification filtering | Repository `Checks` | Read-only | Required now for pull request status surfaces. |
-   | GitHub Actions | Workflow run history, job logs, artifacts, rerun/cancel/retry flows, Actions-focused UI | Repository `Actions` | Read & write | `Read` is enough for viewing workflow runs and logs. Use `Read & write` if the product should also rerun, cancel, delete, or otherwise manage workflow runs. |
-   | Collaborators and teams | Reviewer pickers, org team reviewer flows | Organization `Members` | Read-only | Required for org installs if reviewer assignment should include teams. |
-   | Repository content | File browser, README preview, branch/tag management, create PR from branches | Repository `Contents` | Read & write | Inference from the roadmap. Likely needed once repository browsing and branch operations ship. |
-   | Workflow files and policy | Editing `.github/workflows/*`, enabling/disabling workflows, workflow policy/config management | Repository `Workflows` | Read & write | Separate from `Actions`. Needed when the app modifies workflow definitions or workflow configuration, not just when it reads logs or manages runs. |
-   | Search | Global search across PRs, issues, and repos | No extra permission beyond the resources being searched | N/A | Search inherits access from `Metadata`, `Pull requests`, `Issues`, and likely `Contents`. |
-   | Notifications | Notification inbox, mark read/unread, filter by type | No matching GitHub App permission | N/A | GitHub's notifications REST endpoints do not support GitHub App user or installation tokens, so this roadmap area needs a different implementation strategy. |
-
-   If we add new permissions after users have already installed the app, GitHub will require those installations to approve the expanded permission set.
-
-   Recommended webhook events in GitHub App setup:
-
-   | GitHub UI label | Enable now | Why |
-   | --- | --- | --- |
-   | `Check run` | Yes | Keeps PR status and check-derived cache fresh. |
-   | `Check suite` | Yes | Captures suite-level CI state changes for PR refreshes. |
-   | `Issue comment` | Yes | Refreshes issue and PR comment-related views. |
-   | `Issues` | Yes | Refreshes issue and PR metadata when titles, bodies, labels, or state change. |
-   | `Pull request` | Yes | Core PR invalidation event. |
-   | `Pull request review` | Yes | Refreshes review state and PR detail data. |
-   | `Pull request review comment` | Yes | Refreshes diff discussion and review comment data. |
-   | `Pull request review thread` | Yes | Refreshes review thread state changes. |
-   | `Workflow run` | Later | Recommended once the Actions dashboard ships. Useful for workflow-run level updates, logs, reruns, and run state transitions. |
-   | `Workflow job` | Later | Recommended once the Actions dashboard ships. Useful for job-level logs, timing, and per-job status updates. |
-   | `Push` | Later | Not used by the current invalidation code, but likely useful once branch-aware repo/activity features expand. |
-   | `Repository` | Later | Useful for repo settings and metadata changes if repository management surfaces expand. |
-   | `Create` | Later | Useful for branch/tag creation flows if repo management features ship. |
-   | `Delete` | Later | Useful for branch/tag deletion flows if repo management features ship. |
-
-   `Workflow run` and `Workflow job` require at least repository `Actions: Read-only`.
-
-   The current webhook invalidation route is wired for the first 8 events above. If you enable the `Later` events now, they are harmless, but the app will ignore them until we add handlers.
-
-   Set the webhook URL to `/api/webhooks/github` on your deployed app. For local webhook testing, use a tunnel that forwards to `http://localhost:3000/api/webhooks/github`.
-
-   For local Vite development, set `DEV_TUNNEL_URL` in `apps/dashboard/.dev.vars` to the full public tunnel URL, for example `https://your-subdomain.ngrok-free.app`. The dev server will use it to allow the tunnel host and configure HMR correctly.
-
-6. **Run database migrations**
-
-   ```bash
-   pnpm --filter dashboard migrate
+   https://abc123.ngrok-free.app/api/webhooks/github
    ```
+5. Generate a **Webhook secret** and set the same value in both GitHub and your `.dev.vars`
+6. Restart the dev server
 
-7. **Start the dev server**
-
-   ```bash
-   pnpm dev
-   ```
-
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
-
+The dev server uses `DEV_TUNNEL_URL` to allow the tunnel host and configure HMR correctly.
 
 ## Scripts
 
@@ -174,6 +198,62 @@ A fast, design-first GitHub dashboard for developers who want to stay on top of 
 | `pnpm check` | Run Biome checks |
 | `pnpm check-types` | Type-check all packages |
 | `pnpm format` | Format code with Biome |
+
+### Dashboard-specific scripts
+
+| Command | Description |
+|---------|------------|
+| `pnpm --filter dashboard migrate` | Run D1 migrations (local) |
+| `pnpm --filter dashboard migrate:remote` | Run D1 migrations (remote) |
+| `pnpm --filter dashboard test` | Run tests |
+| `pnpm --filter dashboard deploy` | Build and deploy to Cloudflare Workers |
+
+## GitHub App Permissions Reference
+
+Expanding permissions after users have installed the app will require those installations to approve the new permission set.
+
+<details>
+<summary>Full permissions table with roadmap context</summary>
+
+| Roadmap area | Permission | Level | Notes |
+|---|---|---|---|
+| Auth | User `Email addresses` | Read-only | Resolves the user's email for Better Auth |
+| Core dashboard | Repository `Metadata` | Read-only | Baseline for repository-aware reads |
+| Pull requests | Repository `Pull requests` | Read & write | PR mutations, reviews, and management |
+| Issues | Repository `Issues` | Read & write | Label mutations and issue workflows |
+| CI status | Repository `Checks` | Read-only | PR status checks display |
+| GitHub Actions | Repository `Actions` | Read-only | Workflow run history and logs (upgrade to Read & write for rerun/cancel) |
+| Collaborators | Organization `Members` | Read-only | Reviewer pickers with team support |
+| Repo content | Repository `Contents` | Read & write | File browser, branch operations |
+| Workflow files | Repository `Workflows` | Read & write | Editing workflow definitions (future) |
+| Search | — | N/A | Inherits from other permissions |
+| Notifications | — | N/A | GitHub notifications API doesn't support App tokens; needs different strategy |
+
+</details>
+
+<details>
+<summary>Full webhook events table</summary>
+
+| Event | Enable now | Why |
+|---|---|---|
+| Check run | Yes | PR status and check cache freshness |
+| Check suite | Yes | Suite-level CI state for PR refreshes |
+| Issue comment | Yes | Issue and PR comment views |
+| Issues | Yes | Issue metadata changes |
+| Pull request | Yes | Core PR invalidation |
+| Pull request review | Yes | Review state and PR detail |
+| Pull request review comment | Yes | Diff discussion and review comments |
+| Pull request review thread | Yes | Review thread state changes |
+| Workflow run | Later | For Actions dashboard (workflow-run updates) |
+| Workflow job | Later | For Actions dashboard (job-level logs) |
+| Push | Later | Branch-aware activity features |
+| Repository | Later | Repo settings and metadata changes |
+| Create | Later | Branch/tag creation flows |
+| Delete | Later | Branch/tag deletion flows |
+
+Events marked "Later" are harmless to enable now — the app will ignore them until handlers are added.
+
+</details>
 
 ## Roadmap
 

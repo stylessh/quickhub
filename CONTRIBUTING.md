@@ -4,7 +4,63 @@ Thanks for your interest in contributing to DiffKit! This guide will help you ge
 
 ## Development Setup
 
-Follow the [Getting Started](README.md#getting-started) section in the README to set up your local environment.
+Follow the [Getting Started](README.md#getting-started) section in the README to set up your local environment. You'll need both a GitHub OAuth App and a GitHub App configured.
+
+## Project Architecture
+
+DiffKit is a **pnpm monorepo** managed with **Turborepo**:
+
+```
+diffkit/
+├── apps/
+│   └── dashboard/          # Main web app (TanStack Start + Cloudflare Workers)
+│       ├── src/
+│       │   ├── components/ # App-specific React components
+│       │   ├── db/         # Drizzle ORM schema and database access
+│       │   ├── lib/        # Auth, GitHub API clients, caching, utilities
+│       │   └── routes/     # File-based routes (TanStack Router)
+│       │       ├── api/    # API routes (auth callbacks, webhooks)
+│       │       └── _protected/ # Auth-gated routes
+│       └── drizzle/        # SQL migration files
+├── packages/
+│   ├── ui/                 # Shared UI components (Radix UI + Tailwind CSS)
+│   ├── icons/              # Icon wrapper package
+│   └── typescript-config/  # Shared TypeScript configurations
+└── scripts/                # Migration runner and dev utilities
+```
+
+### Key Technologies
+
+- **TanStack Router** — File-based routing in `apps/dashboard/src/routes/`
+- **TanStack Query** — Server state management and caching
+- **Drizzle ORM** — Database schema and migrations in `apps/dashboard/src/db/` and `apps/dashboard/drizzle/`
+- **Better Auth** — Authentication with a GitHub OAuth App, plus GitHub App user and installation tokens for installed repos
+- **Cloudflare D1** — SQLite database at the edge
+
+### GitHub Integration
+
+DiffKit uses a hybrid GitHub auth model:
+
+- The **GitHub OAuth App** signs users in and powers broad user-context reads, including public or external repositories where the GitHub App is not installed.
+- The **GitHub App user token** (`ghu_` prefix) powers installation discovery via `GET /user/installations`.
+- The **GitHub App installation token** is preferred for repo-scoped reads and writes when the app is installed for that owner.
+
+Auth callbacks:
+- OAuth App: `/api/auth/callback/github`
+- GitHub App user authorization: `/api/github/app/callback`
+- GitHub App setup URL: `/?show-org-setup=true` (with **Redirect on update** enabled)
+
+Environment variables are documented in `apps/dashboard/.dev.vars.example`. Do not commit real `.dev.vars` values or private keys. If a private key is exposed, revoke it in GitHub App settings and generate a replacement.
+
+### Adding a New Route
+
+Routes live in `apps/dashboard/src/routes/`. TanStack Router uses file-based routing — create a new file and the route is automatically registered.
+
+Protected routes go under `_protected/` which enforces authentication.
+
+### Adding a UI Component
+
+Shared components go in `packages/ui/src/components/`. App-specific components go in `apps/dashboard/src/components/`.
 
 ## Workflow
 
@@ -22,49 +78,12 @@ Follow the [Getting Started](README.md#getting-started) section in the README to
 
 This project uses [Biome](https://biomejs.dev/) for linting and formatting. Run `pnpm format` to auto-format your code. Pre-commit hooks via Husky and lint-staged will also catch issues before they're committed.
 
-A few conventions to keep in mind:
+A few conventions:
 
 - Prefer editing existing files over creating new ones
 - Keep components in the appropriate package (`apps/dashboard` for app-specific, `packages/ui` for shared)
-
-## Project Architecture
-
-DiffKit is a **pnpm monorepo** managed with **Turborepo**:
-
-- **`apps/dashboard`** — The main web app built with TanStack Start, deployed to Cloudflare Workers
-- **`packages/ui`** — Shared UI components (Radix UI primitives + Tailwind CSS)
-- **`packages/icons`** — Icon wrapper package
-- **`packages/typescript-config`** — Shared TypeScript configurations
-
-### Key Technologies
-
-- **TanStack Router** — File-based routing in `apps/dashboard/src/routes/`
-- **TanStack Query** — Server state management and caching
-- **Drizzle ORM** — Database schema and migrations in `apps/dashboard/src/db/` and `apps/dashboard/drizzle/`
-- **Better Auth** — Authentication with a GitHub OAuth App, plus GitHub App user and installation tokens for installed repos
-- **Cloudflare D1** — SQLite database at the edge
-
-### GitHub Integration
-
-DiffKit uses a hybrid GitHub auth model:
-
-- The **GitHub OAuth App** signs users in and powers broad user-context reads, including public or external repositories where the GitHub App is not installed.
-- The **GitHub App user token** powers installation discovery, including `GET /user/installations`.
-- The **GitHub App installation token** is preferred for repo-scoped reads and writes when the app is installed for that owner.
-
-Local development requires both app configs. The OAuth App callback is `/api/auth/callback/github`. The GitHub App user authorization callback is `/api/github/app/callback`, and the GitHub App setup URL is `/?show-org-setup=true` with **Redirect on update** enabled.
-
-Required local variables are documented in `apps/dashboard/.dev.vars.example`. Do not commit real `.dev.vars` values or private keys. If a private key is exposed, revoke it in GitHub App settings and generate a replacement.
-
-### Adding a New Route
-
-Routes live in `apps/dashboard/src/routes/`. TanStack Router uses file-based routing — create a new file and the route is automatically registered.
-
-Protected routes go under `_protected/` which enforces authentication.
-
-### Adding a UI Component
-
-Shared components go in `packages/ui/src/components/`. App-specific components go in `apps/dashboard/src/components/`.
+- Use `cn()` for composing class names (not template literals)
+- Use `flex` + `gap` for spacing (not `space-x` / `space-y`)
 
 ## Pull Requests
 
