@@ -1055,6 +1055,8 @@ function MergeFooter({
 	const isDisabled =
 		!canMerge || (isMergeBlocked && !bypass.shouldBypass) || isMerging;
 
+	if (!canMerge) return null;
+
 	return (
 		<div className="flex flex-col gap-3 px-4 py-3">
 			<div className="flex items-center gap-3">
@@ -1109,11 +1111,7 @@ function MergeFooter({
 						</DropdownMenu>
 					</div>
 				</div>
-				{!canMerge ? (
-					<p className="text-xs text-muted-foreground">
-						You don't have permission to merge this pull request.
-					</p>
-				) : isMergeBlocked && !bypass.shouldBypass ? (
+				{isMergeBlocked && !bypass.shouldBypass ? (
 					<p className="text-xs text-muted-foreground">
 						Merging is blocked — all required conditions have not been met.
 					</p>
