@@ -290,6 +290,16 @@ Events marked "Later" are harmless to enable now — the app will ignore them un
 - [x] Assign / unassign users
 - [x] Add / remove labels
 - [ ] Set milestones
+- [ ] Issue types (bug, feature, etc.)
+
+### Conversations
+
+- [ ] Auto-link issues and PRs by number (e.g. `#123`)
+- [ ] Link user mentions (e.g. `@username`)
+- [ ] Clickable and hoverable references (User names and icons, labels, commit SHAs, etc.)
+- [ ] "Added a commit that referenced this issue
+- [ ] Projects
+- [ ] Linked pull requests and issues section in the sidebar
 
 ### Code Reviews
 
