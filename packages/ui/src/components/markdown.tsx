@@ -72,7 +72,7 @@ function resolveAssetSrcSet(
 	srcSet: string | undefined,
 	resolveAssetUrl: MarkdownAssetUrlResolver | null,
 ) {
-	if (!srcSet || !resolveAssetUrl || /^\s*data:/iu.test(srcSet)) return srcSet;
+	if (!srcSet || !resolveAssetUrl) return srcSet;
 
 	return srcSet
 		.split(",")
@@ -83,7 +83,10 @@ function resolveAssetSrcSet(
 			const match = trimmed.match(/^(\S+)(\s+.+)?$/u);
 			if (!match) return candidate;
 
-			return `${resolveAssetUrl(match[1])}${match[2] ?? ""}`;
+			const url = match[1];
+			if (/^data:/iu.test(url)) return candidate;
+
+			return `${resolveAssetUrl(url)}${match[2] ?? ""}`;
 		})
 		.join(", ");
 }

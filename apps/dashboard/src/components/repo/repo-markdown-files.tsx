@@ -218,10 +218,10 @@ export function resolveGitHubMarkdownAssetUrl(
 		trimmedUrl.startsWith("#") ||
 		ABSOLUTE_MARKDOWN_URL_RE.test(trimmedUrl)
 	) {
-		return url;
+		return trimmedUrl;
 	}
 
-	const rootUrl = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/`;
+	const rootUrl = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodePath(ref)}/`;
 	const directoryPath = encodePath(getDirectoryPath(path));
 	const baseUrl = trimmedUrl.startsWith("/")
 		? rootUrl

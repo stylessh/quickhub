@@ -34,6 +34,17 @@ describe("resolveGitHubMarkdownAssetUrl", () => {
 		);
 	});
 
+	it("handles refs with slashes (e.g. feature branches)", () => {
+		expect(
+			resolveGitHubMarkdownAssetUrl(
+				{ ...context, ref: "feature/auth" },
+				"assets/screenshot.png",
+			),
+		).toBe(
+			"https://raw.githubusercontent.com/jakemor/kanna/feature/auth/assets/screenshot.png",
+		);
+	});
+
 	it("keeps absolute and anchor URLs unchanged", () => {
 		expect(
 			resolveGitHubMarkdownAssetUrl(
