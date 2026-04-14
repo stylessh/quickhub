@@ -5,6 +5,8 @@ import {
 	use,
 	useCallback,
 	useContext,
+	useEffect,
+	useId,
 	useRef,
 	useState,
 } from "react";
@@ -194,6 +196,57 @@ function ShikiCode({ code, lang }: { code: string; lang: string }) {
 	);
 }
 
+const mermaidPromise: Promise<typeof import("mermaid")> =
+	typeof window !== "undefined"
+		? import("mermaid").then((m) => {
+				m.default.initialize({
+					startOnLoad: false,
+					theme: "neutral",
+					securityLevel: "loose",
+				});
+				return m;
+			})
+		: new Promise(() => {});
+
+function MermaidBlock({ code }: { code: string }) {
+	const id = useId().replace(/:/g, "_");
+	const containerRef = useRef<HTMLDivElement>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		mermaidPromise
+			.then(async (m) => {
+				if (cancelled) return;
+				const { svg } = await m.default.render(`mermaid-${id}`, code);
+				if (!cancelled && containerRef.current) {
+					containerRef.current.innerHTML = svg;
+				}
+			})
+			.catch((err) => {
+				if (!cancelled) setError(String(err));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [code, id]);
+
+	if (error) {
+		return (
+			<pre className="overflow-x-auto rounded-lg bg-surface-1 p-3 text-xs mb-2 text-red-500">
+				{error}
+			</pre>
+		);
+	}
+
+	return (
+		<div
+			ref={containerRef}
+			className="my-2 flex justify-center [&_svg]:max-w-full"
+		/>
+	);
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: component overrides receive union props from @m2d/react-markdown
 const components: Record<string, React.FC<any>> = {
 	h1: ({ node: _, children, ...props }) => (
@@ -274,6 +327,9 @@ const components: Record<string, React.FC<any>> = {
 		const langMatch = className?.match(/language-(\w+)/);
 		if (langMatch) {
 			const code = String(children).replace(/\n$/, "");
+			if (langMatch[1] === "mermaid") {
+				return <MermaidBlock code={code} />;
+			}
 			return <ShikiCode code={code} lang={langMatch[1]} />;
 		}
 		return (

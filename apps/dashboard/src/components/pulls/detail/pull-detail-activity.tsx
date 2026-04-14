@@ -2403,7 +2403,7 @@ function ReviewCommentBlock({
 			const data = annotation.metadata;
 			if (!data) return null;
 			return (
-				<div className="m-2 divide-y overflow-hidden rounded-lg border bg-surface-0">
+				<div className="m-2 divide-y overflow-auto rounded-lg border bg-surface-0">
 					<ReviewCommentBubble
 						comment={data}
 						owner={owner}
