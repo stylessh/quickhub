@@ -197,10 +197,12 @@ function ShikiCode({ code, lang }: { code: string; lang: string }) {
 }
 
 // Lazy-load mermaid only on the client to avoid bundling it into the server.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: mermaid is a runtime-only dep
 const mermaidPromise: Promise<{ default: any }> =
 	typeof window !== "undefined"
-		? import("mermaid").then((m) => {
+		? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+			// @ts-ignore - mermaid types not available at check-types time
+			import("mermaid").then((m: any) => {
 				m.default.initialize({
 					startOnLoad: false,
 					theme: "neutral",
