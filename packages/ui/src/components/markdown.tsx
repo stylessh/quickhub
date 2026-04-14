@@ -196,7 +196,9 @@ function ShikiCode({ code, lang }: { code: string; lang: string }) {
 	);
 }
 
-const mermaidPromise: Promise<typeof import("mermaid")> =
+// Lazy-load mermaid only on the client to avoid bundling it into the server.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mermaidPromise: Promise<{ default: any }> =
 	typeof window !== "undefined"
 		? import("mermaid").then((m) => {
 				m.default.initialize({
