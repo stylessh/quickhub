@@ -137,6 +137,13 @@ export function DashboardTopbar({
 		void routerRef.current.navigate({ to: tab.url });
 	}
 
+	function getNeighborTab(tab: Tab | undefined) {
+		if (!tab) return undefined;
+		const index = openTabs.findIndex((item) => item.id === tab.id);
+		if (index === -1) return undefined;
+		return openTabs[index + 1] ?? openTabs[index - 1];
+	}
+
 	useGlobalShortcuts([
 		...Array.from(
 			{ length: Math.min(openTabs.length, MAX_TAB_SHORTCUTS) },
@@ -165,8 +172,9 @@ export function DashboardTopbar({
 				const currentPath = routerRef.current.state.location.pathname;
 				const currentTab = openTabs.find((tab) => tab.url === currentPath);
 				if (!currentTab) return;
+				const nextTab = getNeighborTab(currentTab);
 				removeTab(currentTab.id);
-				void routerRef.current.navigate({ to: "/" });
+				void routerRef.current.navigate({ to: nextTab?.url ?? "/" });
 			},
 		},
 		{
