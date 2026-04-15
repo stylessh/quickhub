@@ -492,7 +492,7 @@ const InboxRow = memo(function InboxRow({
 				}
 			}}
 			className={cn(
-				"group flex w-full cursor-pointer items-start gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors",
+				"group flex w-full cursor-pointer items-start gap-3 border-b border-border/50 px-4 py-3 text-left transition-colors last:border-b-0",
 				"hover:[&:not(:has([data-action]:hover))]:bg-surface-1",
 				isSelected && "bg-surface-1",
 			)}
