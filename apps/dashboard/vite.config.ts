@@ -120,11 +120,80 @@ export default {};`;
 	};
 }
 
+// Stub out client-only packages in the SSR environment to reduce the workerd
+// V8 heap footprint. These libraries are only used for client-side rendering
+// (animations, number transitions, diff viewers, devtools) and are never
+// needed during server-side rendering. Without these stubs, workerd can hit
+// its ~1.4 GB V8 heap limit and OOM on memory-constrained systems (e.g. WSL2).
+function clientOnlySSRStubs(): import("vite").Plugin {
+	const CLIENT_ONLY_PACKAGES = [
+		"motion",
+		"@number-flow/react",
+		"@pierre/diffs",
+		"@tanstack/react-devtools",
+		"@tanstack/react-router-devtools",
+	];
+
+	const STUB_PREFIX = "\0client-stub:";
+
+	const MOTION_STUB = `
+const noop = () => {};
+const noopObj = { get: noop, set: noop, on: noop, stop: noop, destroy: noop };
+const handler = { get: (_, prop) => typeof prop === "symbol" ? undefined : prop };
+export const motion = new Proxy({}, handler);
+export const AnimatePresence = ({ children }) => children;
+export const useMotionValue = () => noopObj;
+export const useTransform = () => noopObj;
+export const animate = () => ({ stop: noop });
+export default {};`;
+
+	const STUBS: Record<string, string> = {
+		motion: MOTION_STUB,
+		"@number-flow/react": `export default function NumberFlow({ value }) { return String(value ?? ""); }`,
+		"@pierre/diffs": `export const registerCustomTheme = () => {}; export default {};`,
+		"@pierre/diffs/react": `const noop = () => null; export default noop;`,
+		"@tanstack/react-devtools": `export function TanStackDevtools() { return null; }`,
+		"@tanstack/react-router-devtools": `export function TanStackRouterDevtoolsPanel() { return null; }`,
+	};
+
+	function isClientOnly(source: string) {
+		return CLIENT_ONLY_PACKAGES.some(
+			(pkg) => source === pkg || source.startsWith(`${pkg}/`),
+		);
+	}
+
+	function getStub(source: string) {
+		if (STUBS[source]) return STUBS[source];
+		for (const [pkg, stub] of Object.entries(STUBS)) {
+			if (source.startsWith(`${pkg}/`)) return stub;
+		}
+		return `export default {};`;
+	}
+
+	return {
+		name: "client-only-ssr-stubs",
+		enforce: "pre",
+		resolveId: {
+			handler(source) {
+				if (this.environment?.name === "ssr" && isClientOnly(source)) {
+					return `${STUB_PREFIX}${source}`;
+				}
+			},
+		},
+		load(id) {
+			if (id.startsWith(STUB_PREFIX)) {
+				return getStub(id.slice(STUB_PREFIX.length));
+			}
+		},
+	};
+}
+
 const config = defineConfig(({ command }) => ({
 	server: command === "serve" ? getTunnelServerConfig() : undefined,
 	plugins: [
 		devtools(),
 		shikiSSRStub(),
+		clientOnlySSRStubs(),
 		cloudflare({
 			viteEnvironment: { name: "ssr" },
 			...worktreePersistState,
