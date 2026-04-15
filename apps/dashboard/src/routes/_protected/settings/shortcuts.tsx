@@ -267,7 +267,7 @@ function ShortcutsPage() {
 										i > 0 && "border-t border-border/70",
 									)}
 								>
-									<span className="pr-4 text-sm">{shortcut.description}</span>
+									<span className="text-sm">{shortcut.description}</span>
 									<kbd className="flex items-center gap-1">
 										{shortcut.keys.map((key) => {
 											const token = resolveKey(key);
