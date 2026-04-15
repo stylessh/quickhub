@@ -3,6 +3,7 @@ import {
 	ExternalLinkIcon,
 	GitPullRequestIcon,
 	HomeIcon,
+	InboxIcon,
 	IssuesIcon,
 	LogOutIcon,
 	MoreHorizontalIcon,
@@ -55,7 +56,13 @@ type NavItem = {
 	count?: number;
 };
 
-const primaryNavRoutes = ["/", "/pulls", "/issues", "/reviews"] as const;
+const primaryNavRoutes = [
+	"/",
+	"/inbox",
+	"/pulls",
+	"/issues",
+	"/reviews",
+] as const;
 const MAX_TAB_SHORTCUTS = 9;
 
 export function DashboardTopbar({
@@ -88,6 +95,7 @@ export function DashboardTopbar({
 	const navItems = useMemo<NavItem[]>(
 		() => [
 			{ to: "/", label: "Overview", icon: HomeIcon },
+			{ to: "/inbox", label: "Inbox", icon: InboxIcon },
 			{
 				to: "/pulls",
 				label: "Pull Requests",
