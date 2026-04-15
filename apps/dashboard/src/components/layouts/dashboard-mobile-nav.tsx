@@ -1,6 +1,7 @@
 import {
 	GitPullRequestIcon,
 	HomeIcon,
+	InboxIcon,
 	IssuesIcon,
 	MoonIcon,
 	ReviewsIcon,
@@ -80,6 +81,7 @@ export function DashboardMobileNav({
 
 	const navItems: MobileNavItem[] = [
 		{ to: "/", label: "Overview", icon: HomeIcon },
+		{ to: "/inbox", label: "Inbox", icon: InboxIcon },
 		{
 			to: "/pulls",
 			label: "Pulls",
