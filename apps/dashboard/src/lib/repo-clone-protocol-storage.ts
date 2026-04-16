@@ -1,3 +1,6 @@
+import { useCallback } from "react";
+import { useLocalStorageState } from "./use-local-storage-state";
+
 export type CloneProtocol = "https" | "ssh" | "cli";
 
 const CLONE_PROTOCOL_STORAGE_KEY = "diffkit:repo-clone-protocol";
@@ -13,21 +16,25 @@ export function isCloneProtocol(value: unknown): value is CloneProtocol {
 	return typeof value === "string" && value in VALID_CLONE_PROTOCOLS;
 }
 
-export function readStoredCloneProtocol(): CloneProtocol {
-	if (typeof window === "undefined") {
-		return DEFAULT_CLONE_PROTOCOL;
-	}
+export function useRepoCloneProtocol() {
+	const [cloneProtocol, setCloneProtocol] = useLocalStorageState(
+		CLONE_PROTOCOL_STORAGE_KEY,
+		{
+			defaultValue: DEFAULT_CLONE_PROTOCOL,
+			validate: isCloneProtocol,
+		},
+	);
 
-	try {
-		const stored = window.localStorage.getItem(CLONE_PROTOCOL_STORAGE_KEY);
-		return isCloneProtocol(stored) ? stored : DEFAULT_CLONE_PROTOCOL;
-	} catch {
-		return DEFAULT_CLONE_PROTOCOL;
-	}
-}
+	const setStoredCloneProtocol = useCallback(
+		(protocol: string) => {
+			if (!isCloneProtocol(protocol)) {
+				return;
+			}
 
-export function persistCloneProtocol(protocol: CloneProtocol): void {
-	try {
-		window.localStorage.setItem(CLONE_PROTOCOL_STORAGE_KEY, protocol);
-	} catch {}
+			setCloneProtocol(protocol);
+		},
+		[setCloneProtocol],
+	);
+
+	return [cloneProtocol, setStoredCloneProtocol] as const;
 }
