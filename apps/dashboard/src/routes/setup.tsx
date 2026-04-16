@@ -1,3 +1,4 @@
+import { LoaderCircleIcon } from "@diffkit/icons";
 import { Button } from "@diffkit/ui/components/button";
 import { Logo } from "@diffkit/ui/components/logo";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
@@ -12,7 +13,21 @@ import {
 import { buildSeo, formatPageTitle, PRIVATE_ROUTE_HEADERS } from "#/lib/seo";
 import { useRefreshOnReturn } from "#/lib/use-refresh-on-return";
 
+function SetupPageLoading() {
+	return (
+		<main className="isolate min-h-dvh bg-background">
+			<div className="flex min-h-dvh items-center justify-center">
+				<LoaderCircleIcon
+					className="size-5 animate-spin text-muted-foreground"
+					strokeWidth={1.75}
+				/>
+			</div>
+		</main>
+	);
+}
+
 export const Route = createFileRoute("/setup")({
+	pendingComponent: SetupPageLoading,
 	beforeLoad: async () => {
 		const session = await getSession();
 		if (!session) {
