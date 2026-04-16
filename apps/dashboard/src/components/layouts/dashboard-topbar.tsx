@@ -236,7 +236,10 @@ export function DashboardTopbar({
 						>
 							<Avatar className="size-7 border border-border">
 								<AvatarImage src={user.image ?? undefined} alt={displayName} />
-								<AvatarFallback delayMs={400} className="text-xs">
+								<AvatarFallback
+									delayMs={user.image ? 400 : 0}
+									className="text-xs"
+								>
 									{initials}
 								</AvatarFallback>
 							</Avatar>
@@ -246,7 +249,10 @@ export function DashboardTopbar({
 						<DropdownMenuLabel className="flex items-center gap-3 py-2">
 							<Avatar className="size-8 border border-border">
 								<AvatarImage src={user.image ?? undefined} alt={displayName} />
-								<AvatarFallback delayMs={400} className="text-xs">
+								<AvatarFallback
+									delayMs={user.image ? 400 : 0}
+									className="text-xs"
+								>
 									{initials}
 								</AvatarFallback>
 							</Avatar>
