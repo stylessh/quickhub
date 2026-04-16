@@ -4232,10 +4232,17 @@ function mergeCachedMyPullsResult(
 		return fresh;
 	}
 
+	const forbiddenOrgs = [
+		...new Set([
+			...(existing.forbiddenOrgs ?? []),
+			...(fresh.forbiddenOrgs ?? []),
+		]),
+	];
+
 	return {
 		...mergeMyPullsResults([existing, fresh]),
-		forbiddenOrgs: fresh.forbiddenOrgs,
-		timedOut: fresh.timedOut,
+		forbiddenOrgs: forbiddenOrgs.length > 0 ? forbiddenOrgs : undefined,
+		timedOut: Boolean(existing.timedOut || fresh.timedOut),
 	};
 }
 

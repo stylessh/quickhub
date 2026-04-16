@@ -122,6 +122,7 @@ export function removeTabsToRight(id: string) {
 
 export function isMergedTab(t: Tab): boolean {
 	return (
+		t.pullState === "merged" ||
 		t.merged === true ||
 		((t.type === "pull" || t.type === "review") &&
 			t.iconColor === "text-purple-500")
