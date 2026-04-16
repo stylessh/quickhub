@@ -90,7 +90,6 @@ interface DashboardTabsProps {
 
 export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 	const openTabs = useTabs();
-	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const contextTabRef = useRef<{ tab: Tab; index: number } | null>(null);
 	const {
 		scrollRef,
@@ -100,31 +99,17 @@ export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 		handleWheel,
 	} = useScrollShadows(openTabs.length);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: pathname is intentionally used as a trigger to re-run when the route changes
-	useEffect(() => {
-		const container = scrollRef.current;
-		if (!container) return;
-		const activeTab = container.querySelector<HTMLElement>(".active");
-		if (!activeTab) return;
-
-		const { left: cLeft, right: cRight } = container.getBoundingClientRect();
-		const { left: tLeft, right: tRight } = activeTab.getBoundingClientRect();
-
-		if (tLeft < cLeft || tRight > cRight) {
-			activeTab.scrollIntoView({ inline: "nearest", block: "nearest" });
-			updateScrollState();
-		}
-	}, [pathname, scrollRef, updateScrollState]);
-
+	// Read pathname imperatively in event handlers (rerender-defer-reads)
+	// so the callbacks are stable and don't bust memo on DetailTab.
 	const handleCloseTab = useCallback(
 		(id: string, tabUrl: string) => {
-			const isActive = pathname === tabUrl;
+			const currentPath = routerRef.current.state.location.pathname;
 			removeTab(id);
-			if (isActive) {
+			if (currentPath === tabUrl) {
 				void routerRef.current.navigate({ to: "/" });
 			}
 		},
-		[pathname, routerRef],
+		[routerRef],
 	);
 
 	const handleContextClose = useCallback(() => {
@@ -136,11 +121,12 @@ export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 	const handleContextCloseOthers = useCallback(() => {
 		const ctx = contextTabRef.current;
 		if (!ctx) return;
-		if (pathname !== ctx.tab.url) {
+		const currentPath = routerRef.current.state.location.pathname;
+		if (currentPath !== ctx.tab.url) {
 			void routerRef.current.navigate({ to: ctx.tab.url });
 		}
 		removeOtherTabs(ctx.tab.id);
-	}, [pathname, routerRef]);
+	}, [routerRef]);
 
 	const handleContextCloseRight = useCallback(() => {
 		const ctx = contextTabRef.current;
@@ -184,6 +170,10 @@ export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 							onMouseEnter={updateScrollState}
 							className="no-scrollbar flex w-0 min-w-full items-center gap-0.5 overflow-x-auto"
 						>
+							<ScrollActiveTabIntoView
+								scrollRef={scrollRef}
+								updateScrollState={updateScrollState}
+							/>
 							{openTabs.map((tab, index) => {
 								const Icon = tabIconMap[tab.type];
 								return (
@@ -225,6 +215,39 @@ export function DashboardTabs({ tabsReady, routerRef }: DashboardTabsProps) {
 			</ContextMenu>
 		</div>
 	);
+}
+
+/**
+ * Isolated component that subscribes to pathname changes to scroll the active
+ * tab into view. Extracted so the parent DashboardTabs doesn't re-render on
+ * every navigation — only this tiny renderless component does.
+ */
+function ScrollActiveTabIntoView({
+	scrollRef,
+	updateScrollState,
+}: {
+	scrollRef: React.RefObject<HTMLDivElement | null>;
+	updateScrollState: () => void;
+}) {
+	const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: pathname triggers scroll-into-view on route change
+	useEffect(() => {
+		const container = scrollRef.current;
+		if (!container) return;
+		const activeTab = container.querySelector<HTMLElement>(".active");
+		if (!activeTab) return;
+
+		const { left: cLeft, right: cRight } = container.getBoundingClientRect();
+		const { left: tLeft, right: tRight } = activeTab.getBoundingClientRect();
+
+		if (tLeft < cLeft || tRight > cRight) {
+			activeTab.scrollIntoView({ inline: "nearest", block: "nearest" });
+			updateScrollState();
+		}
+	}, [pathname, scrollRef, updateScrollState]);
+
+	return null;
 }
 
 const DetailTab = memo(function DetailTab({

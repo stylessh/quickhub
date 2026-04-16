@@ -5,6 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { memo, useCallback, useMemo, useState } from "react";
 import { FileSearchCard } from "#/components/shared/file-search-card";
+import {
+	useExplorerPath,
+	useIsActivePath,
+	useIsAncestorPath,
+} from "#/lib/explorer-path-store";
 import type {
 	FileSearchEntry,
 	FileSearchResult,
@@ -66,18 +71,17 @@ export const RepoFileTreeSidebar = memo(function RepoFileTreeSidebar({
 	owner,
 	repoName,
 	currentRef,
-	currentPath,
 	scope,
 	entries,
 }: {
 	owner: string;
 	repoName: string;
 	currentRef: string;
-	currentPath: string;
 	scope: GitHubQueryScope;
 	entries: RepoTreeEntry[];
 }) {
 	const navigate = useNavigate();
+	const currentPath = useExplorerPath();
 	const allFiles = useAllCachedFiles(scope, owner, repoName, currentRef);
 
 	const defaultEntries = useMemo(
@@ -118,7 +122,6 @@ export const RepoFileTreeSidebar = memo(function RepoFileTreeSidebar({
 						owner={owner}
 						repoName={repoName}
 						currentRef={currentRef}
-						currentPath={currentPath}
 						scope={scope}
 						depth={0}
 						parentPath=""
@@ -138,7 +141,6 @@ const TreeNode = memo(function TreeNode({
 	owner,
 	repoName,
 	currentRef,
-	currentPath,
 	scope,
 	depth,
 	parentPath,
@@ -147,7 +149,6 @@ const TreeNode = memo(function TreeNode({
 	owner: string;
 	repoName: string;
 	currentRef: string;
-	currentPath: string;
 	scope: GitHubQueryScope;
 	depth: number;
 	parentPath: string;
@@ -162,7 +163,6 @@ const TreeNode = memo(function TreeNode({
 				owner={owner}
 				repoName={repoName}
 				currentRef={currentRef}
-				currentPath={currentPath}
 				scope={scope}
 				depth={depth}
 				entryPath={entryPath}
@@ -176,7 +176,6 @@ const TreeNode = memo(function TreeNode({
 			owner={owner}
 			repoName={repoName}
 			currentRef={currentRef}
-			currentPath={currentPath}
 			depth={depth}
 			entryPath={entryPath}
 		/>
@@ -188,7 +187,6 @@ const DirectoryNode = memo(function DirectoryNode({
 	owner,
 	repoName,
 	currentRef,
-	currentPath,
 	scope,
 	depth,
 	entryPath,
@@ -197,13 +195,12 @@ const DirectoryNode = memo(function DirectoryNode({
 	owner: string;
 	repoName: string;
 	currentRef: string;
-	currentPath: string;
 	scope: GitHubQueryScope;
 	depth: number;
 	entryPath: string;
 }) {
-	const isActive = currentPath === entryPath;
-	const isAncestor = currentPath.startsWith(`${entryPath}/`);
+	const isActive = useIsActivePath(entryPath);
+	const isAncestor = useIsAncestorPath(entryPath);
 	const [isOpen, setIsOpen] = useState(isAncestor || isActive);
 	const hasMounted = useHasMounted();
 
@@ -246,7 +243,12 @@ const DirectoryNode = memo(function DirectoryNode({
 						repo: repoName,
 						_splat: `${currentRef}/${entryPath}`,
 					}}
-					onClick={() => {
+					onClick={(e) => {
+						if (isActive) {
+							e.preventDefault();
+							setIsOpen((prev) => !prev);
+							return;
+						}
 						if (!isOpen) setIsOpen(true);
 					}}
 					className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-1.5 pr-3"
@@ -278,7 +280,6 @@ const DirectoryNode = memo(function DirectoryNode({
 							owner={owner}
 							repoName={repoName}
 							currentRef={currentRef}
-							currentPath={currentPath}
 							scope={scope}
 							depth={depth + 1}
 							parentPath={entryPath}
@@ -295,7 +296,6 @@ const FileNode = memo(function FileNode({
 	owner,
 	repoName,
 	currentRef,
-	currentPath,
 	depth,
 	entryPath,
 }: {
@@ -303,11 +303,10 @@ const FileNode = memo(function FileNode({
 	owner: string;
 	repoName: string;
 	currentRef: string;
-	currentPath: string;
 	depth: number;
 	entryPath: string;
 }) {
-	const isActive = currentPath === entryPath;
+	const isActive = useIsActivePath(entryPath);
 
 	return (
 		<Link
@@ -316,6 +315,9 @@ const FileNode = memo(function FileNode({
 				owner,
 				repo: repoName,
 				_splat: `${currentRef}/${entryPath}`,
+			}}
+			onClick={(e) => {
+				if (isActive) e.preventDefault();
 			}}
 			className={cn(
 				"flex w-full items-center gap-1.5 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-1",

@@ -31,6 +31,7 @@ import {
 	getRepoTree,
 	getReviewThreadStatuses,
 	getTimelineEventPage,
+	getTreeEntryCommits,
 	getUserActivity,
 	getUserContributions,
 	getUserPinnedRepos,
@@ -204,6 +205,10 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; path: string },
 		) => ["github", scope.userId, "repo", "fileLastCommit", input] as const,
+		treeEntryCommits: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string; ref: string; dirPath: string },
+		) => ["github", scope.userId, "repo", "treeEntryCommits", input] as const,
 		contributors: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string },
@@ -676,6 +681,31 @@ export function githubFileLastCommitQueryOptions(
 		staleTime: githubCachePolicy.detail.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		meta: tabPersistedMeta,
+	});
+}
+
+export function githubTreeEntryCommitsQueryOptions(
+	scope: GitHubQueryScope,
+	input: {
+		owner: string;
+		repo: string;
+		ref: string;
+		dirPath: string;
+		entries: string[];
+	},
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.treeEntryCommits(scope, {
+			owner: input.owner,
+			repo: input.repo,
+			ref: input.ref,
+			dirPath: input.dirPath,
+		}),
+		queryFn: () => getTreeEntryCommits({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
+		enabled: input.entries.length > 0,
 	});
 }
 

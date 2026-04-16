@@ -3,12 +3,13 @@ import { Skeleton } from "@diffkit/ui/components/skeleton";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { formatRelativeTime } from "#/lib/format-relative-time";
 import {
 	type GitHubQueryScope,
-	githubFileLastCommitQueryOptions,
+	githubTreeEntryCommitsQueryOptions,
 } from "#/lib/github.query";
-import type { RepoTreeEntry } from "#/lib/github.types";
+import type { FileLastCommit, RepoTreeEntry } from "#/lib/github.types";
 
 export function FileTree({
 	entries,
@@ -23,6 +24,18 @@ export function FileTree({
 	currentRef: string;
 	scope: GitHubQueryScope;
 }) {
+	const entryNames = useMemo(() => entries.map((e) => e.name), [entries]);
+
+	const commitsQuery = useQuery(
+		githubTreeEntryCommitsQueryOptions(scope, {
+			owner,
+			repo,
+			ref: currentRef,
+			dirPath: "",
+			entries: entryNames,
+		}),
+	);
+
 	return (
 		<div className="overflow-hidden rounded-b-lg border">
 			{entries.map((entry, index) => (
@@ -32,7 +45,8 @@ export function FileTree({
 					owner={owner}
 					repo={repo}
 					currentRef={currentRef}
-					scope={scope}
+					commit={commitsQuery.data?.[entry.name] ?? null}
+					isCommitLoading={commitsQuery.isLoading}
 					isLast={index === entries.length - 1}
 				/>
 			))}
@@ -45,29 +59,20 @@ function FileTreeRow({
 	owner,
 	repo,
 	currentRef,
-	scope,
+	commit,
+	isCommitLoading,
 	isLast,
 }: {
 	entry: RepoTreeEntry;
 	owner: string;
 	repo: string;
 	currentRef: string;
-	scope: GitHubQueryScope;
+	commit: FileLastCommit | null;
+	isCommitLoading: boolean;
 	isLast: boolean;
 }) {
 	const Icon = entry.type === "dir" ? FolderIcon : FileIcon;
 	const isDir = entry.type === "dir";
-
-	const commitQuery = useQuery(
-		githubFileLastCommitQueryOptions(scope, {
-			owner,
-			repo,
-			ref: currentRef,
-			path: entry.name,
-		}),
-	);
-
-	const commit = commitQuery.data;
 
 	return (
 		<Link
@@ -103,14 +108,14 @@ function FileTreeRow({
 			<span className="truncate text-muted-foreground">
 				{commit ? (
 					commit.message.split("\n")[0]
-				) : commitQuery.isLoading ? (
+				) : isCommitLoading ? (
 					<Skeleton className="h-3.5 w-48 rounded" />
 				) : null}
 			</span>
 			<span className="text-right text-xs text-muted-foreground">
 				{commit?.date ? (
 					formatRelativeTime(commit.date)
-				) : commitQuery.isLoading ? (
+				) : isCommitLoading ? (
 					<Skeleton className="ml-auto h-3.5 w-12 rounded" />
 				) : null}
 			</span>

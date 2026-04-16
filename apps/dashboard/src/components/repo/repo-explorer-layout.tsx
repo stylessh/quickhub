@@ -12,7 +12,14 @@ import {
 import { Skeleton } from "@diffkit/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { memo, useMemo, useState, useSyncExternalStore } from "react";
+import {
+	memo,
+	useCallback,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import { getExplorerPath, setExplorerPath } from "#/lib/explorer-path-store";
 import {
 	type GitHubQueryScope,
 	githubRepoOverviewQueryOptions,
@@ -68,6 +75,14 @@ export function RepoExplorerLayout({
 	const repoData = overviewQuery.data;
 	const activeRef = currentRefProp ?? repoData?.defaultBranch ?? "main";
 
+	// Sync the explorer path store so tree nodes can subscribe to derived
+	// isActive booleans instead of receiving currentPath as a prop.
+	// Called during render (not in an effect) so children read the correct
+	// value on their first render pass — critical for DirectoryNode's
+	// initial isOpen state.  The internal guard (if path === current) makes
+	// duplicate calls in StrictMode a no-op.
+	setExplorerPath(currentPath);
+
 	useRegisterTab(
 		repoData
 			? {
@@ -108,23 +123,32 @@ export function RepoExplorerLayout({
 			hasMounted && !!repoData && viewMode === "tree" && currentPath !== "",
 	});
 
-	const handleBranchChange = (branch: string) => {
-		if (currentPath) {
-			void navigate({
-				to: "/$owner/$repo/tree/$",
-				params: {
-					owner,
-					repo: repoName,
-					_splat: `${branch}/${currentPath}`,
-				},
-			});
-		} else {
-			void navigate({
-				to: "/$owner/$repo",
-				params: { owner, repo: repoName },
-			});
-		}
-	};
+	const handleBranchChange = useCallback(
+		(branch: string) => {
+			const path = getExplorerPath();
+			if (path) {
+				void navigate({
+					to:
+						viewMode === "blob"
+							? "/$owner/$repo/blob/$"
+							: "/$owner/$repo/tree/$",
+					params: {
+						owner,
+						repo: repoName,
+						_splat: `${branch}/${path}`,
+					},
+				});
+			} else {
+				void navigate({
+					to: "/$owner/$repo",
+					params: { owner, repo: repoName },
+				});
+			}
+		},
+		[navigate, owner, repoName, viewMode],
+	);
+
+	const handleOpenFileSheet = useCallback(() => setDrawerOpen(true), []);
 
 	if (overviewQuery.error) throw overviewQuery.error;
 	if (!repoData) return <ExplorerSkeleton />;
@@ -170,7 +194,6 @@ export function RepoExplorerLayout({
 			owner={owner}
 			repoName={repoName}
 			currentRef={activeRef}
-			currentPath={currentPath}
 			scope={scope}
 			entries={rootTreeQuery.data}
 		/>
@@ -185,7 +208,7 @@ export function RepoExplorerLayout({
 				currentRef={activeRef}
 				scope={scope}
 				onBranchChange={handleBranchChange}
-				onOpenFileSheet={() => setDrawerOpen(true)}
+				onOpenFileSheet={handleOpenFileSheet}
 				isDesktop={isDesktop}
 			/>
 

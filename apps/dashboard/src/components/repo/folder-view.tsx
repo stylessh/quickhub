@@ -3,12 +3,17 @@ import { Skeleton } from "@diffkit/ui/components/skeleton";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { formatRelativeTime } from "#/lib/format-relative-time";
 import {
 	type GitHubQueryScope,
-	githubFileLastCommitQueryOptions,
+	githubTreeEntryCommitsQueryOptions,
 } from "#/lib/github.query";
-import type { RepoOverview, RepoTreeEntry } from "#/lib/github.types";
+import type {
+	FileLastCommit,
+	RepoOverview,
+	RepoTreeEntry,
+} from "#/lib/github.types";
 import { LatestCommitBar } from "./latest-commit-bar";
 import { RepoMarkdownFiles } from "./repo-markdown-files";
 
@@ -29,6 +34,18 @@ export function FolderView({
 	currentPath: string;
 	scope: GitHubQueryScope;
 }) {
+	const entryNames = useMemo(() => entries.map((e) => e.name), [entries]);
+
+	const commitsQuery = useQuery(
+		githubTreeEntryCommitsQueryOptions(scope, {
+			owner,
+			repo: repoName,
+			ref: currentRef,
+			dirPath: currentPath,
+			entries: entryNames,
+		}),
+	);
+
 	return (
 		<div className="flex flex-col gap-6">
 			<div>
@@ -42,7 +59,8 @@ export function FolderView({
 							repoName={repoName}
 							currentRef={currentRef}
 							currentPath={currentPath}
-							scope={scope}
+							commit={commitsQuery.data?.[entry.name] ?? null}
+							isCommitLoading={commitsQuery.isLoading}
 							isLast={index === entries.length - 1}
 						/>
 					))}
@@ -66,7 +84,8 @@ function FolderViewRow({
 	repoName,
 	currentRef,
 	currentPath,
-	scope,
+	commit,
+	isCommitLoading,
 	isLast,
 }: {
 	entry: RepoTreeEntry;
@@ -74,23 +93,13 @@ function FolderViewRow({
 	repoName: string;
 	currentRef: string;
 	currentPath: string;
-	scope: GitHubQueryScope;
+	commit: FileLastCommit | null;
+	isCommitLoading: boolean;
 	isLast: boolean;
 }) {
 	const Icon = entry.type === "dir" ? FolderIcon : FileIcon;
 	const isDir = entry.type === "dir";
 	const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
-
-	const commitQuery = useQuery(
-		githubFileLastCommitQueryOptions(scope, {
-			owner,
-			repo: repoName,
-			ref: currentRef,
-			path: entryPath,
-		}),
-	);
-
-	const commit = commitQuery.data;
 
 	return (
 		<Link
@@ -126,14 +135,14 @@ function FolderViewRow({
 			<span className="truncate text-muted-foreground">
 				{commit ? (
 					commit.message.split("\n")[0]
-				) : commitQuery.isLoading ? (
+				) : isCommitLoading ? (
 					<Skeleton className="h-3.5 w-48 rounded" />
 				) : null}
 			</span>
 			<span className="text-right text-xs text-muted-foreground">
 				{commit?.date ? (
 					formatRelativeTime(commit.date)
-				) : commitQuery.isLoading ? (
+				) : isCommitLoading ? (
 					<Skeleton className="ml-auto h-3.5 w-12 rounded" />
 				) : null}
 			</span>

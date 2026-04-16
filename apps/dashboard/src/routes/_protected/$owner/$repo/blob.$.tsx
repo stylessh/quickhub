@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { RepoExplorerLayout } from "#/components/repo/repo-explorer-layout";
 import {
 	githubRepoBranchesQueryOptions,
@@ -87,7 +88,7 @@ function BlobPage() {
 	const { user } = Route.useRouteContext();
 	const { owner, repo } = Route.useParams();
 	const { ref, path } = Route.useLoaderData();
-	const scope = { userId: user.id };
+	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
 
 	return (
 		<RepoExplorerLayout
