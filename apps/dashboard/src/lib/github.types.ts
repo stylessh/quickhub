@@ -3,6 +3,7 @@ export type RepositoryRef = {
 	owner: string;
 	fullName: string;
 	url: string;
+	isPrivate: boolean;
 };
 
 export type GitHubActor = {

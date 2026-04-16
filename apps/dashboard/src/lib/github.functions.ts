@@ -126,6 +126,7 @@ type GitHubGraphQLRepositoryRef = {
 	name: string;
 	nameWithOwner: string;
 	url: string;
+	isPrivate: boolean;
 	owner: {
 		login: string;
 	};
@@ -671,17 +672,20 @@ function buildRepositoryRef(
 	owner: string,
 	repo: string,
 	url?: string | null,
+	isPrivate = false,
 ): RepositoryRef {
 	return {
 		name: repo,
 		owner,
 		fullName: `${owner}/${repo}`,
 		url: url ?? `https://github.com/${owner}/${repo}`,
+		isPrivate,
 	};
 }
 
 function parseRepositoryRef(
 	repositoryUrl?: string | null,
+	isPrivate = false,
 ): RepositoryRef | null {
 	if (!repositoryUrl) {
 		return null;
@@ -696,6 +700,7 @@ function parseRepositoryRef(
 		match[1],
 		match[2],
 		`https://github.com/${match[1]}/${match[2]}`,
+		isPrivate,
 	);
 }
 
@@ -723,6 +728,7 @@ function mapGraphQLRepositoryRef(
 		owner,
 		fullName: repository.nameWithOwner,
 		url: repository.url,
+		isPrivate: repository.isPrivate,
 	};
 }
 
@@ -3476,6 +3482,7 @@ async function getPullPageDataViaGraphQL(
 									name
 									nameWithOwner
 									url
+									isPrivate
 									owner { login }
 								}
 								reviewThreads(first: 1) { totalCount }
@@ -3779,6 +3786,7 @@ async function getIssuePageDataViaGraphQL(
 									name
 									nameWithOwner
 									url
+									isPrivate
 									owner { login }
 								}
 								assignees(first: 20) {
@@ -4256,6 +4264,7 @@ async function getMyPullsResult({
 									name
 									nameWithOwner
 									url
+									isPrivate
 									owner {
 										login
 									}
@@ -4434,6 +4443,7 @@ async function getMyIssuesResult({
 									name
 									nameWithOwner
 									url
+									isPrivate
 									owner {
 										login
 									}
@@ -4707,7 +4717,7 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 		const login = viewer.login;
 
 		const perPage = clampCommandSearchPerPage(data.perPage);
-		const [pullItems, issueItems] = await Promise.all([
+		const [pullItems, issueItems, accessIndex] = await Promise.all([
 			safeCommandPaletteSearch({
 				label: "pull requests",
 				fallback: [] as SearchItem[],
@@ -4738,13 +4748,62 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 					return response.data.items;
 				},
 			}),
+			getInstallationAccessIndex(context),
 		]);
 
 		return {
-			pulls: mapPullSearchItems(pullItems),
-			issues: mapIssueSearchItems(issueItems),
+			pulls: filterItemsByInstallationAccess(
+				mapPullSearchItems(pullItems),
+				accessIndex,
+			),
+			issues: filterItemsByInstallationAccess(
+				mapIssueSearchItems(issueItems),
+				accessIndex,
+			),
 		};
 	});
+
+function filterItemsByInstallationAccess<
+	T extends { repository: RepositoryRef },
+>(items: T[], accessIndex: GitHubInstallationAccessIndex): T[] {
+	return items.filter((item) =>
+		isRepoVisibleWithInstallationAccess(
+			accessIndex,
+			item.repository.owner,
+			item.repository.name,
+			item.repository.isPrivate,
+		),
+	);
+}
+
+function filterMyPullsResult(
+	result: MyPullsResult,
+	accessIndex: GitHubInstallationAccessIndex,
+): MyPullsResult {
+	return {
+		...result,
+		reviewRequested: filterItemsByInstallationAccess(
+			result.reviewRequested,
+			accessIndex,
+		),
+		assigned: filterItemsByInstallationAccess(result.assigned, accessIndex),
+		authored: filterItemsByInstallationAccess(result.authored, accessIndex),
+		mentioned: filterItemsByInstallationAccess(result.mentioned, accessIndex),
+		involved: filterItemsByInstallationAccess(result.involved, accessIndex),
+	};
+}
+
+function filterMyIssuesResult(
+	result: MyIssuesResult,
+	accessIndex: GitHubInstallationAccessIndex,
+): MyIssuesResult {
+	return {
+		...result,
+		assigned: filterItemsByInstallationAccess(result.assigned, accessIndex),
+		authored: filterItemsByInstallationAccess(result.authored, accessIndex),
+		mentioned: filterItemsByInstallationAccess(result.mentioned, accessIndex),
+	};
+}
 
 function toInstallationTargetType(
 	value: string | undefined,
@@ -4770,7 +4829,11 @@ export const getMyPulls = createServerFn({ method: "GET" }).handler(
 		}
 
 		const viewer = await getViewer(context);
-		return getMyPullsResult({ context, username: viewer.login });
+		const [result, accessIndex] = await Promise.all([
+			getMyPullsResult({ context, username: viewer.login }),
+			getInstallationAccessIndex(context),
+		]);
+		return filterMyPullsResult(result, accessIndex);
 	},
 );
 
@@ -4924,7 +4987,11 @@ export const getMyIssues = createServerFn({ method: "GET" }).handler(
 		}
 
 		const viewer = await getViewer(context);
-		return getMyIssuesResult({ context, username: viewer.login });
+		const [result, accessIndex] = await Promise.all([
+			getMyIssuesResult({ context, username: viewer.login }),
+			getInstallationAccessIndex(context),
+		]);
+		return filterMyIssuesResult(result, accessIndex);
 	},
 );
 
@@ -6386,6 +6453,8 @@ export const getUserPinnedRepos = createServerFn({ method: "GET" })
 			return [];
 		}
 
+		const accessIndex = await getInstallationAccessIndex(context);
+
 		try {
 			const response: {
 				user: {
@@ -6426,17 +6495,26 @@ export const getUserPinnedRepos = createServerFn({ method: "GET" })
 				{ username: data.username },
 			);
 
-			return response.user.pinnedItems.nodes.map((repo) => ({
-				name: repo.name,
-				description: repo.description,
-				stars: repo.stargazerCount,
-				language: repo.primaryLanguage?.name ?? null,
-				languageColor: repo.primaryLanguage?.color ?? null,
-				url: repo.url,
-				owner: repo.owner.login,
-				isPrivate: repo.isPrivate,
-				forks: repo.forkCount,
-			}));
+			return response.user.pinnedItems.nodes
+				.filter((repo) =>
+					isRepoVisibleWithInstallationAccess(
+						accessIndex,
+						repo.owner.login,
+						repo.name,
+						repo.isPrivate,
+					),
+				)
+				.map((repo) => ({
+					name: repo.name,
+					description: repo.description,
+					stars: repo.stargazerCount,
+					language: repo.primaryLanguage?.name ?? null,
+					languageColor: repo.primaryLanguage?.color ?? null,
+					url: repo.url,
+					owner: repo.owner.login,
+					isPrivate: repo.isPrivate,
+					forks: repo.forkCount,
+				}));
 		} catch {
 			return [];
 		}
@@ -7128,14 +7206,14 @@ export const getNotifications = createServerFn({ method: "GET" })
 			return { notifications: [] };
 		}
 
-		const response =
-			await context.octokit.rest.activity.listNotificationsForAuthenticatedUser(
-				{
-					all: data.all ?? false,
-					participating: data.participating ?? false,
-					per_page: 50,
-				},
-			);
+		const [response, accessIndex] = await Promise.all([
+			context.octokit.rest.activity.listNotificationsForAuthenticatedUser({
+				all: data.all ?? false,
+				participating: data.participating ?? false,
+				per_page: 50,
+			}),
+			getInstallationAccessIndex(context),
+		]);
 
 		// Batch-fetch participants for PR/Issue notifications in parallel
 		const participantMap = new Map<string, NotificationParticipant[]>();
@@ -7252,7 +7330,16 @@ export const getNotifications = createServerFn({ method: "GET" })
 			url: n.url,
 		}));
 
-		return { notifications };
+		return {
+			notifications: notifications.filter((notification) =>
+				isRepoVisibleWithInstallationAccess(
+					accessIndex,
+					notification.repository.owner.login,
+					notification.repository.name,
+					notification.repository.private,
+				),
+			),
+		};
 	});
 
 type MarkNotificationReadInput = { threadId: string };
