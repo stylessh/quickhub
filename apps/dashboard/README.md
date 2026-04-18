@@ -33,9 +33,9 @@ Copy `.dev.vars.example` to `.dev.vars` and fill in the real values. GitHub comm
 
 ## Cloudflare Wrangler Configuration
 
-The live `wrangler.jsonc` is ignored by git, so copy `wrangler.jsonc.example` to `wrangler.jsonc` before you deploy or connect to Cloudflare resources locally.
+Copy `wrangler.jsonc.example` to **`wrangler.dev.jsonc`** (gitignored). `pnpm dev` and local D1 migrations use that file so local bindings stay separate from deploy config. For a local production build or `wrangler deploy` without `--config`, you can also maintain **`wrangler.jsonc`** (gitignored).
 
-Fill in the Cloudflare-specific values in `wrangler.jsonc`:
+Fill in the Cloudflare-specific values:
 
 - `account_id`
 - `d1_databases[].database_id`

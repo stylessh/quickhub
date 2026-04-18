@@ -1,54 +1,76 @@
 import { spawnSync } from "node:child_process";
-import { getSharedWranglerStatePath, isWorktreeCheckout } from "./shared-worktree-paths.mjs";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  getSharedWranglerStatePath,
+  isWorktreeCheckout,
+} from "./shared-worktree-paths.mjs";
+
+const PNPM_SCRIPT_EXT = /\.(c|m)?js$/u;
 
 const databaseName = process.argv[2];
 const mode = process.argv[3] ?? "--local";
 
 if (!databaseName) {
-	console.error(
-		"Usage: node scripts/run-d1-migrations.mjs <database-name> [--local|--remote]",
-	);
-	process.exit(1);
+  console.error(
+    "Usage: node scripts/run-d1-migrations.mjs <database-name> [--local|--remote]"
+  );
+  process.exit(1);
 }
 
 if (mode !== "--local" && mode !== "--remote") {
-	console.error(`Unsupported mode "${mode}". Use --local or --remote.`);
-	process.exit(1);
+  console.error(`Unsupported mode "${mode}". Use --local or --remote.`);
+  process.exit(1);
 }
 
-const args = ["exec", "wrangler", "d1", "migrations", "apply", databaseName, mode];
+const args = ["exec", "wrangler"];
+
+let wranglerConfig = process.env.WRANGLER_CONFIG;
+if (!wranglerConfig && mode === "--local") {
+  const cwd = process.cwd();
+  if (existsSync(resolve(cwd, "wrangler.dev.jsonc"))) {
+    wranglerConfig = "wrangler.dev.jsonc";
+  } else if (existsSync(resolve(cwd, "wrangler.jsonc"))) {
+    wranglerConfig = "wrangler.jsonc";
+  }
+}
+if (wranglerConfig) {
+  args.push("-c", wranglerConfig);
+}
+
+args.push("d1", "migrations", "apply", databaseName, mode);
 
 if (mode === "--local" && isWorktreeCheckout()) {
-	args.push("--persist-to", getSharedWranglerStatePath());
+  args.push("--persist-to", getSharedWranglerStatePath());
 }
 
 function runPnpm(commandArgs) {
-	const pnpmExecPath = process.env.npm_execpath;
+  const pnpmExecPath = process.env.npm_execpath;
 
-	if (pnpmExecPath) {
-		const shouldUseNode = /\.(c|m)?js$/u.test(pnpmExecPath);
-		const command = shouldUseNode ? process.execPath : pnpmExecPath;
-		const args = shouldUseNode ? [pnpmExecPath, ...commandArgs] : commandArgs;
+  if (pnpmExecPath) {
+    const shouldUseNode = PNPM_SCRIPT_EXT.test(pnpmExecPath);
+    const command = shouldUseNode ? process.execPath : pnpmExecPath;
+    const args = shouldUseNode ? [pnpmExecPath, ...commandArgs] : commandArgs;
 
-		return spawnSync(command, args, {
-			stdio: "inherit",
-			shell: process.platform === "win32" && !shouldUseNode,
-		});
-	}
+    return spawnSync(command, args, {
+      stdio: "inherit",
+      shell: process.platform === "win32" && !shouldUseNode,
+    });
+  }
 
-	const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
-	return spawnSync(pnpmCommand, commandArgs, {
-		stdio: "inherit",
-		shell: process.platform === "win32",
-	});
+  return spawnSync(pnpmCommand, commandArgs, {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
 }
 
 const result = runPnpm(args);
 
 if (result.error) {
-	console.error(result.error.message);
-	process.exit(1);
+  console.error(result.error.message);
+  process.exit(1);
 }
 
 process.exit(result.status ?? 0);

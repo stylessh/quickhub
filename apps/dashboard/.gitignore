@@ -12,3 +12,8 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Local Wrangler config (copy from wrangler.jsonc.example) and CI-generated deploy configs
+wrangler.jsonc
+wrangler.dev.jsonc
+wrangler.deploy.json

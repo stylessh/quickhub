@@ -12,9 +12,28 @@ import {
 } from "../../scripts/shared-worktree-paths.mjs";
 
 const dashboardRoot = new URL(".", import.meta.url);
+const wranglerDevPath = new URL("./wrangler.dev.jsonc", dashboardRoot);
+const wranglerMainPath = new URL("./wrangler.jsonc", dashboardRoot);
 const worktreePersistState = isWorktreeCheckout(dashboardRoot)
 	? { persistState: { path: getSharedWranglerStatePath(dashboardRoot) } }
 	: {};
+
+/** Vite dev / Vitest use a dedicated file so local bindings stay out of CI `wrangler.jsonc`. */
+function resolveCloudflareWranglerConfigPath(
+	command: string,
+	mode: string,
+): string | undefined {
+	if (command !== "serve" || mode === "production") {
+		return undefined;
+	}
+	if (existsSync(wranglerDevPath)) {
+		return "wrangler.dev.jsonc";
+	}
+	if (existsSync(wranglerMainPath)) {
+		return "wrangler.jsonc";
+	}
+	return undefined;
+}
 
 function getDevVarFromFile(key: string) {
 	const devVarsPath = new URL("./.dev.vars", dashboardRoot);
@@ -148,22 +167,26 @@ export default {};`;
 const useCloudflareRemoteBindings =
 	process.env.CI !== "true" && process.env.VITEST !== "true";
 
-const config = defineConfig(({ command }) => ({
-	server: command === "serve" ? getTunnelServerConfig() : undefined,
-	plugins: [
-		devtools(),
-		shikiSSRStub(),
-		betterAuthDialectStub(),
-		cloudflare({
-			viteEnvironment: { name: "ssr" },
-			...worktreePersistState,
-			remoteBindings: useCloudflareRemoteBindings,
-		}),
-		tsconfigPaths({ projects: ["./tsconfig.json"] }),
-		tailwindcss(),
-		tanstackStart(),
-		viteReact(),
-	],
-}));
+const config = defineConfig(({ command, mode }) => {
+	const wranglerConfigPath = resolveCloudflareWranglerConfigPath(command, mode);
+	return {
+		server: command === "serve" ? getTunnelServerConfig() : undefined,
+		plugins: [
+			devtools(),
+			shikiSSRStub(),
+			betterAuthDialectStub(),
+			cloudflare({
+				viteEnvironment: { name: "ssr" },
+				...worktreePersistState,
+				remoteBindings: useCloudflareRemoteBindings,
+				...(wranglerConfigPath ? { configPath: wranglerConfigPath } : {}),
+			}),
+			tsconfigPaths({ projects: ["./tsconfig.json"] }),
+			tailwindcss(),
+			tanstackStart(),
+			viteReact(),
+		],
+	};
+});
 
 export default config;
