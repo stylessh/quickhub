@@ -163,11 +163,7 @@ function collectKeysToInvalidateAfterServerSync(
 			const qs = queryClient.getQueryState(target.queryKey);
 
 			if (lastSeen === undefined) {
-				if (
-					qs &&
-					qs.dataUpdatedAt > 0 &&
-					signal.updatedAt > qs.dataUpdatedAt
-				) {
+				if (qs && qs.dataUpdatedAt > 0 && signal.updatedAt > qs.dataUpdatedAt) {
 					updatedKeys.add(signal.signalKey);
 				}
 				lastSeenTimestamps.set(compositeKey, signal.updatedAt);
@@ -456,6 +452,9 @@ export function useGitHubSignalStream(
 	const lastSeenTimestampsRef = useRef(new Map<string, number>());
 
 	useEffect(() => {
+		// Reference deps so the reset runs when subscription identity changes (Biome exhaustive-deps).
+		void signalKeysKey;
+		void mergedTargetsIdentity;
 		lastSeenTimestampsRef.current = new Map();
 	}, [signalKeysKey, mergedTargetsIdentity]);
 
