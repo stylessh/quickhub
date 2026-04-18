@@ -1,5 +1,5 @@
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { type MutableRefObject, useEffect, useMemo, useRef } from "react";
 import { debug } from "./debug";
 import { getRevalidationSignalTimestamps } from "./github.functions";
 
@@ -81,9 +81,50 @@ export function invalidateTargets(
 	return invalidatedCount;
 }
 
+/** Sync server signal timestamps with local query ages; mutates lastSeenTimestamps. */
+function collectKeysToInvalidateAfterServerSync(
+	queryClient: ReturnType<typeof useQueryClient>,
+	targets: readonly GitHubSignalStreamTarget[],
+	signals: Array<{ signalKey: string; updatedAt: number }>,
+	lastSeenTimestamps: Map<string, number>,
+): string[] {
+	const updatedKeys: string[] = [];
+
+	for (const signal of signals) {
+		const lastSeen = lastSeenTimestamps.get(signal.signalKey);
+		if (lastSeen === undefined) {
+			let needsCatchUp = false;
+			for (const target of targets) {
+				if (!target.signalKeys.includes(signal.signalKey)) {
+					continue;
+				}
+				const qs = queryClient.getQueryState(target.queryKey);
+				if (
+					qs &&
+					qs.dataUpdatedAt > 0 &&
+					signal.updatedAt > qs.dataUpdatedAt
+				) {
+					needsCatchUp = true;
+					break;
+				}
+			}
+			if (needsCatchUp) {
+				updatedKeys.push(signal.signalKey);
+			}
+			lastSeenTimestamps.set(signal.signalKey, signal.updatedAt);
+		} else if (signal.updatedAt > lastSeen) {
+			lastSeenTimestamps.set(signal.signalKey, signal.updatedAt);
+			updatedKeys.push(signal.signalKey);
+		}
+	}
+
+	return updatedKeys;
+}
+
 function useGitHubSignalStreamWebSocket(
 	targets: readonly GitHubSignalStreamTarget[],
 	signalKeysKey: string,
+	lastSeenTimestampsRef: MutableRefObject<Map<string, number>>,
 ) {
 	const queryClient = useQueryClient();
 	const targetsRef = useRef(targets);
@@ -98,6 +139,45 @@ function useGitHubSignalStreamWebSocket(
 		let ws: WebSocket | null = null;
 		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 		let disposed = false;
+
+		async function syncSignalsFromServer(source: string) {
+			try {
+				const signals = await getRevalidationSignalTimestamps({
+					data: { signalKeys: keys },
+				});
+				if (disposed) return;
+
+				const updatedKeys = collectKeysToInvalidateAfterServerSync(
+					queryClient,
+					targetsRef.current,
+					signals,
+					lastSeenTimestampsRef.current,
+				);
+
+				if (updatedKeys.length === 0) {
+					return;
+				}
+
+				debug(source, "detected missed or stale cache vs signals", {
+					updatedKeys,
+				});
+
+				const invalidatedCount = invalidateTargets(
+					queryClient,
+					targetsRef.current,
+					new Set(updatedKeys),
+					source,
+				);
+
+				debug(source, "sync processed", {
+					updatedKeys,
+					invalidatedCount,
+					totalTargets: targetsRef.current.length,
+				});
+			} catch (error) {
+				debug(source, "sync failed", { error });
+			}
+		}
 
 		function sendSubscription(socket: WebSocket) {
 			if (socket.readyState === WebSocket.OPEN) {
@@ -160,6 +240,7 @@ function useGitHubSignalStreamWebSocket(
 			ws.addEventListener("open", () => {
 				debug("github-signal-stream", "connected");
 				if (ws) sendSubscription(ws);
+				void syncSignalsFromServer("github-signal-ws-catchup");
 			});
 
 			ws.addEventListener("message", handleMessage);
@@ -199,12 +280,13 @@ function useGitHubSignalStreamWebSocket(
 				ws.close();
 			}
 		};
-	}, [signalKeysKey, queryClient]);
+	}, [signalKeysKey, queryClient, lastSeenTimestampsRef]);
 }
 
 function useGitHubSignalPoll(
 	targets: readonly GitHubSignalStreamTarget[],
 	signalKeysKey: string,
+	lastSeenTimestampsRef: MutableRefObject<Map<string, number>>,
 ) {
 	const queryClient = useQueryClient();
 	const targetsRef = useRef(targets);
@@ -218,7 +300,6 @@ function useGitHubSignalPoll(
 		const keys = signalKeysKey.split(",");
 		let pollTimer: ReturnType<typeof setTimeout> | null = null;
 		let disposed = false;
-		const lastSeenTimestamps = new Map<string, number>();
 
 		async function pollSignals() {
 			if (disposed) return;
@@ -230,16 +311,12 @@ function useGitHubSignalPoll(
 
 				if (disposed) return;
 
-				const updatedKeys: string[] = [];
-				for (const signal of signals) {
-					const lastSeen = lastSeenTimestamps.get(signal.signalKey);
-					if (lastSeen === undefined) {
-						lastSeenTimestamps.set(signal.signalKey, signal.updatedAt);
-					} else if (signal.updatedAt > lastSeen) {
-						lastSeenTimestamps.set(signal.signalKey, signal.updatedAt);
-						updatedKeys.push(signal.signalKey);
-					}
-				}
+				const updatedKeys = collectKeysToInvalidateAfterServerSync(
+					queryClient,
+					targetsRef.current,
+					signals,
+					lastSeenTimestampsRef.current,
+				);
 
 				if (updatedKeys.length > 0) {
 					debug("github-signal-poll", "detected missed signals", {
@@ -283,7 +360,7 @@ function useGitHubSignalPoll(
 				clearTimeout(pollTimer);
 			}
 		};
-	}, [signalKeysKey, queryClient]);
+	}, [signalKeysKey, queryClient, lastSeenTimestampsRef]);
 }
 
 export function useGitHubSignalStream(
@@ -299,6 +376,16 @@ export function useGitHubSignalStream(
 	// not when the array reference changes.
 	const signalKeysKey = allSignalKeys.join(",");
 
-	useGitHubSignalStreamWebSocket(targets, signalKeysKey);
-	useGitHubSignalPoll(targets, signalKeysKey);
+	const lastSeenTimestampsRef = useRef(new Map<string, number>());
+
+	useEffect(() => {
+		lastSeenTimestampsRef.current = new Map();
+	}, [signalKeysKey]);
+
+	useGitHubSignalStreamWebSocket(
+		targets,
+		signalKeysKey,
+		lastSeenTimestampsRef,
+	);
+	useGitHubSignalPoll(targets, signalKeysKey, lastSeenTimestampsRef);
 }
