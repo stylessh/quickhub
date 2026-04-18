@@ -23,8 +23,10 @@ import {
 	getPullStatus,
 	getPullsFromRepo,
 	getPullsFromUser,
+	getRefHeadCommit,
 	getRepoBranches,
 	getRepoCollaborators,
+	getRepoCommit,
 	getRepoContributors,
 	getRepoDiscussions,
 	getRepoFileContent,
@@ -214,6 +216,14 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; path: string },
 		) => ["github", scope.userId, "repo", "fileLastCommit", input] as const,
+		commit: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string; sha: string },
+		) => ["github", scope.userId, "repo", "commit", input] as const,
+		refHeadCommit: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string; ref: string },
+		) => ["github", scope.userId, "repo", "refHeadCommit", input] as const,
 		treeEntryCommits: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; dirPath: string },
@@ -736,6 +746,32 @@ export function githubFileLastCommitQueryOptions(
 	return queryOptions({
 		queryKey: githubQueryKeys.repo.fileLastCommit(scope, input),
 		queryFn: () => getFileLastCommit({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubRepoCommitQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string; sha: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.commit(scope, input),
+		queryFn: () => getRepoCommit({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubRefHeadCommitQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string; ref: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.refHeadCommit(scope, input),
+		queryFn: () => getRefHeadCommit({ data: input }),
 		staleTime: githubCachePolicy.detail.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		meta: tabPersistedMeta,

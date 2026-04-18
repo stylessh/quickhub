@@ -83,6 +83,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	file,
 	diffStyle,
 	isNearViewport,
+	readOnly = false,
 	annotations,
 	repliesByCommentId,
 	owner,
@@ -103,6 +104,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	file: PullFile;
 	diffStyle: "unified" | "split";
 	isNearViewport: boolean;
+	readOnly?: boolean;
 	annotations: DiffLineAnnotation<PullReviewComment>[];
 	repliesByCommentId: ReadonlyMap<number, PullReviewComment[]>;
 	owner: string;
@@ -131,6 +133,10 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	);
 
 	const allAnnotations = useMemo(() => {
+		if (readOnly) {
+			return [] as DiffLineAnnotation<ReviewAnnotation>[];
+		}
+
 		const result: DiffLineAnnotation<ReviewAnnotation>[] = [...annotations];
 
 		for (const pending of pendingComments) {
@@ -157,7 +163,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 		}
 
 		return result;
-	}, [annotations, pendingComments, activeCommentForm]);
+	}, [readOnly, annotations, pendingComments, activeCommentForm]);
 
 	const useWordDiff =
 		file.changes <= LARGE_PATCH_CHANGE_THRESHOLD &&
@@ -175,9 +181,9 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 			hunkSeparators: "line-info" as const,
 			overflow: "scroll" as const,
 			disableFileHeader: true,
-			enableGutterUtility: true,
-			enableLineSelection: true,
-			onGutterUtilityClick: handleGutterUtilityClick,
+			enableGutterUtility: !readOnly,
+			enableLineSelection: !readOnly,
+			...(readOnly ? {} : { onGutterUtilityClick: handleGutterUtilityClick }),
 			unsafeCSS: [
 				`:host { color-scheme: ${isDark ? "dark" : "light"}; }`,
 				`:host { --diffs-font-family: 'Geist Mono Variable', 'SF Mono', ui-monospace, 'Cascadia Code', monospace; }`,
@@ -187,7 +193,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 				`[data-diff] { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 4px 4px; overflow: hidden; }`,
 			].join("\n"),
 		}),
-		[diffStyle, handleGutterUtilityClick, isDark, useWordDiff],
+		[diffStyle, handleGutterUtilityClick, isDark, readOnly, useWordDiff],
 	);
 	const patchString = useMemo(() => buildPatchString(file), [file]);
 
@@ -236,6 +242,8 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 							renderAnnotation={(
 								annotation: DiffLineAnnotation<ReviewAnnotation>,
 							) => {
+								if (readOnly) return null;
+
 								const data = annotation.metadata as
 									| PendingComment
 									| PullReviewComment

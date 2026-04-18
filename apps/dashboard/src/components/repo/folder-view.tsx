@@ -49,7 +49,14 @@ export function FolderView({
 	return (
 		<div className="flex flex-col gap-6">
 			<div>
-				<LatestCommitBar repo={repo} />
+				<LatestCommitBar
+					owner={owner}
+					repoName={repoName}
+					ref={currentRef}
+					scope={scope}
+					defaultBranch={repo.defaultBranch}
+					defaultBranchTip={repo.latestCommit}
+				/>
 				<div className="overflow-hidden rounded-b-lg border">
 					{entries.map((entry, index) => (
 						<FolderViewRow
@@ -102,19 +109,21 @@ function FolderViewRow({
 	const entryPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
 	return (
-		<Link
-			to={isDir ? "/$owner/$repo/tree/$" : "/$owner/$repo/blob/$"}
-			params={{
-				owner,
-				repo: repoName,
-				_splat: `${currentRef}/${entryPath}`,
-			}}
+		<div
 			className={cn(
 				"grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_80px] items-center gap-4 px-4 py-2 text-sm hover:bg-surface-1",
 				!isLast && "border-b",
 			)}
 		>
-			<div className="flex min-w-0 items-center gap-2.5">
+			<Link
+				to={isDir ? "/$owner/$repo/tree/$" : "/$owner/$repo/blob/$"}
+				params={{
+					owner,
+					repo: repoName,
+					_splat: `${currentRef}/${entryPath}`,
+				}}
+				className="flex min-w-0 items-center gap-2.5"
+			>
 				<Icon
 					size={15}
 					strokeWidth={1.8}
@@ -131,14 +140,20 @@ function FolderViewRow({
 				>
 					{entry.name}
 				</span>
-			</div>
-			<span className="truncate text-muted-foreground">
+			</Link>
+			<div className="min-w-0">
 				{commit ? (
-					commit.message.split("\n")[0]
+					<Link
+						to="/$owner/$repo/commit/$sha"
+						params={{ owner, repo: repoName, sha: commit.sha }}
+						className="block truncate text-muted-foreground transition-colors hover:text-foreground hover:underline"
+					>
+						{commit.message.split("\n")[0]}
+					</Link>
 				) : isCommitLoading ? (
 					<Skeleton className="h-3.5 w-48 rounded" />
 				) : null}
-			</span>
+			</div>
 			<span className="text-right text-xs text-muted-foreground">
 				{commit?.date ? (
 					formatRelativeTime(commit.date)
@@ -146,7 +161,7 @@ function FolderViewRow({
 					<Skeleton className="ml-auto h-3.5 w-12 rounded" />
 				) : null}
 			</span>
-		</Link>
+		</div>
 	);
 }
 

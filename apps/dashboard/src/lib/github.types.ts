@@ -340,6 +340,20 @@ export type PullFilesPage = {
 	nextPage: number | null;
 };
 
+export type RepoCommitInput = {
+	owner: string;
+	repo: string;
+	sha: string;
+};
+
+export type RepoCommitDetail = {
+	sha: string;
+	message: string;
+	date: string;
+	author: GitHubActor | null;
+	files: PullFile[];
+};
+
 export type PullReviewComment = {
 	id: number;
 	nodeId: string;

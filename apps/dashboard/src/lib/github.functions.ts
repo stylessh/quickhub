@@ -40,6 +40,8 @@ import type {
 	ReplyToReviewCommentInput,
 	RepoBranch,
 	RepoCollaborator,
+	RepoCommitDetail,
+	RepoCommitInput,
 	RepoContributorsResult,
 	RepoOverview,
 	RepoParticipationStats,
@@ -6118,6 +6120,81 @@ export const getPullFiles = createServerFn({ method: "GET" })
 		return getPullFilesResult(context, data);
 	});
 
+async function getRepoCommitResult(
+	context: GitHubContext,
+	data: RepoCommitInput,
+): Promise<RepoCommitDetail> {
+	const repoCodeKey = githubRevalidationSignalKeys.repoCode({
+		owner: data.owner,
+		repo: data.repo,
+	});
+
+	return getCachedGitHubRequest({
+		context,
+		resource: "repos.commit",
+		params: data,
+		freshForMs: githubCachePolicy.detail.staleTimeMs,
+		signalKeys: [repoCodeKey],
+		namespaceKeys: [repoCodeKey],
+		cacheMode: "split",
+		request: (headers, signal) =>
+			context.octokit.rest.repos.getCommit({
+				owner: data.owner,
+				repo: data.repo,
+				ref: data.sha,
+				headers,
+				request: { signal },
+			}),
+		mapData: (commit) => ({
+			sha: commit.sha,
+			message: commit.commit.message ?? "",
+			date:
+				commit.commit.author?.date ??
+				commit.commit.committer?.date ??
+				new Date().toISOString(),
+			author: commit.author
+				? {
+						login: commit.author.login,
+						avatarUrl: commit.author.avatar_url,
+						url: commit.author.html_url,
+						type: commit.author.type ?? "User",
+					}
+				: null,
+			files: (commit.files ?? []).map((file) => ({
+				sha: file.sha,
+				filename: file.filename,
+				status: file.status as PullFile["status"],
+				additions: file.additions,
+				deletions: file.deletions,
+				changes: file.changes,
+				patch: file.patch ?? null,
+				previousFilename: file.previous_filename ?? null,
+			})),
+		}),
+	});
+}
+
+export const getRepoCommit = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<RepoCommitInput>)
+	.handler(async ({ data }): Promise<RepoCommitDetail | null> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return null;
+		}
+
+		try {
+			return await getRepoCommitResult(context, data);
+		} catch (error) {
+			if (
+				error instanceof RequestError &&
+				(error.status === 404 || error.status === 403)
+			) {
+				return null;
+			}
+			throw error;
+		}
+	});
+
 async function getPullReviewCommentsResult(
 	context: GitHubContext,
 	data: PullFromRepoInput,
@@ -8270,6 +8347,59 @@ export const getFileLastCommit = createServerFn({ method: "GET" })
 					repo: data.repo,
 					sha: data.ref,
 					path: data.path,
+					per_page: 1,
+					headers,
+				}),
+			mapData: (commits) => {
+				const commit = commits[0];
+				if (!commit) return null;
+				return {
+					sha: commit.sha,
+					message: commit.commit.message,
+					date:
+						commit.commit.committer?.date ?? commit.commit.author?.date ?? "",
+					author: commit.author
+						? {
+								login: commit.author.login,
+								avatarUrl: commit.author.avatar_url,
+								url: commit.author.html_url,
+								type: commit.author.type,
+							}
+						: null,
+				};
+			},
+		}).catch(() => null);
+	});
+
+type RefHeadCommitInput = {
+	owner: string;
+	repo: string;
+	ref: string;
+};
+
+/** Tip commit for a branch/tag/SHA (first page of `listCommits` for `ref`, no path filter). */
+export const getRefHeadCommit = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<RefHeadCommitInput>)
+	.handler(async ({ data }): Promise<FileLastCommit | null> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) return null;
+
+		return getCachedGitHubRequest<
+			Awaited<ReturnType<GitHubClient["rest"]["repos"]["listCommits"]>>["data"],
+			FileLastCommit | null
+		>({
+			context,
+			resource: "repo.refHeadCommit.v1",
+			params: data,
+			freshForMs: githubCachePolicy.detail.staleTimeMs,
+			signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			cacheMode: "split",
+			request: (headers) =>
+				context.octokit.rest.repos.listCommits({
+					owner: data.owner,
+					repo: data.repo,
+					sha: data.ref,
 					per_page: 1,
 					headers,
 				}),

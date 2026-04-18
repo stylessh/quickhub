@@ -15,6 +15,7 @@ import {
 } from "@diffkit/ui/components/tooltip";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Suspense, use, useCallback, useMemo, useRef, useState } from "react";
 import { formatRelativeTime } from "#/lib/format-relative-time";
 import {
@@ -216,7 +217,7 @@ export function CodeFileView({
 		const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${currentRef}/${path}`;
 		return (
 			<div className="flex flex-col gap-4">
-				<FileCommitBar commit={commit} />
+				<FileCommitBar owner={owner} repo={repo} commit={commit} />
 				<div className="overflow-hidden rounded-lg border">
 					<FileViewHeader
 						fileName={fileName}
@@ -277,7 +278,7 @@ export function CodeFileView({
 
 	return (
 		<div className="flex flex-col gap-4">
-			<FileCommitBar commit={commit} />
+			<FileCommitBar owner={owner} repo={repo} commit={commit} />
 			<div className="overflow-hidden rounded-lg border">
 				<FileViewHeader
 					fileName={fileName}
@@ -327,7 +328,7 @@ function SvgFileView({
 
 	return (
 		<div className="flex flex-col gap-4">
-			<FileCommitBar commit={commit} />
+			<FileCommitBar owner={owner} repo={repo} commit={commit} />
 			<div className="overflow-hidden rounded-lg border">
 				<FileViewHeader
 					fileName={fileName}
@@ -464,8 +465,12 @@ function FileViewHeader({
 }
 
 function FileCommitBar({
+	owner,
+	repo,
 	commit,
 }: {
+	owner: string;
+	repo: string;
 	commit: FileLastCommit | null | undefined;
 }) {
 	if (!commit) {
@@ -490,18 +495,13 @@ function FileCommitBar({
 				/>
 			)}
 			<span className="font-medium">{commit.author?.login ?? "Unknown"}</span>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<span className="min-w-0 flex-1 truncate text-muted-foreground">
-						{firstLine}
-					</span>
-				</TooltipTrigger>
-				{firstLine.length > 60 && (
-					<TooltipContent side="bottom" className="max-w-sm">
-						{firstLine}
-					</TooltipContent>
-				)}
-			</Tooltip>
+			<Link
+				to="/$owner/$repo/commit/$sha"
+				params={{ owner, repo, sha: commit.sha }}
+				className="min-w-0 flex-1 truncate text-left text-muted-foreground transition-colors hover:text-foreground hover:underline"
+			>
+				{firstLine}
+			</Link>
 			<div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
 				<Tooltip>
 					<TooltipTrigger asChild>

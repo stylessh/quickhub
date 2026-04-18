@@ -13,14 +13,16 @@ export function useRegisterTab(
 		additions?: number;
 		deletions?: number;
 		merged?: boolean;
+		tabId?: string;
 	} | null,
 ) {
 	useEffect(() => {
 		if (!tab?.title) return;
 		const id =
-			tab.number != null
+			tab.tabId ??
+			(tab.number != null
 				? `${tab.type}:${tab.repo}#${tab.number}`
-				: `${tab.type}:${tab.repo}`;
+				: `${tab.type}:${tab.repo}`);
 		addTab({
 			id,
 			type: tab.type,
@@ -45,5 +47,6 @@ export function useRegisterTab(
 		tab?.additions,
 		tab?.deletions,
 		tab?.merged,
+		tab?.tabId,
 	]);
 }

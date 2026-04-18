@@ -2,6 +2,7 @@ import {
 	ArchiveIcon,
 	ChevronRightIcon,
 	CloseIcon,
+	GitCommitIcon,
 	GitPullRequestIcon,
 	IssuesIcon,
 	Remove01Icon,
@@ -33,6 +34,7 @@ const tabIconMap = {
 	issue: IssuesIcon,
 	review: ReviewsIcon,
 	repo: ArchiveIcon,
+	commit: GitCommitIcon,
 } as const;
 
 function useScrollShadows(tabCount: number) {
@@ -371,7 +373,7 @@ const DetailTab = memo(function DetailTab({
 				/>
 			)}
 			<span className="max-w-32 truncate">{tab.title}</span>
-			{tab.type === "review" ? (
+			{tab.type === "review" || tab.type === "commit" ? (
 				<span className="flex items-center gap-1 font-mono text-[11px] font-medium tabular-nums">
 					{tab.additions != null && (
 						<span className="text-green-500">+{tab.additions}</span>

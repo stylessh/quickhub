@@ -719,7 +719,7 @@ const ReviewToolbar = memo(function ReviewToolbar({
 // ReviewSidebar — owns file filter state, reads activeFile from store
 // ---------------------------------------------------------------------------
 
-const ReviewSidebar = memo(function ReviewSidebar({
+export const ReviewSidebar = memo(function ReviewSidebar({
 	sidebarFiles,
 	sidebarFileCount,
 	activeFileStore,

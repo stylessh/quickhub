@@ -37,6 +37,7 @@ import { Route as ProtectedOwnerRepoReviewPullIdRouteImport } from './routes/_pr
 import { Route as ProtectedOwnerRepoPullPullIdRouteImport } from './routes/_protected/$owner/$repo/pull.$pullId'
 import { Route as ProtectedOwnerRepoIssuesNewRouteImport } from './routes/_protected/$owner/$repo/issues.new'
 import { Route as ProtectedOwnerRepoIssuesIssueIdRouteImport } from './routes/_protected/$owner/$repo/issues.$issueId'
+import { Route as ProtectedOwnerRepoCommitShaRouteImport } from './routes/_protected/$owner/$repo/commit.$sha'
 import { Route as ProtectedOwnerRepoBlobSplatRouteImport } from './routes/_protected/$owner/$repo/blob.$'
 
 const TermsRoute = TermsRouteImport.update({
@@ -185,6 +186,12 @@ const ProtectedOwnerRepoIssuesIssueIdRoute =
     path: '/$owner/$repo/issues/$issueId',
     getParentRoute: () => ProtectedRoute,
   } as any)
+const ProtectedOwnerRepoCommitShaRoute =
+  ProtectedOwnerRepoCommitShaRouteImport.update({
+    id: '/$owner/$repo/commit/$sha',
+    path: '/$owner/$repo/commit/$sha',
+    getParentRoute: () => ProtectedRoute,
+  } as any)
 const ProtectedOwnerRepoBlobSplatRoute =
   ProtectedOwnerRepoBlobSplatRouteImport.update({
     id: '/$owner/$repo/blob/$',
@@ -215,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/$owner/$repo/': typeof ProtectedOwnerRepoIndexRoute
   '/$owner/$repo/blob/$': typeof ProtectedOwnerRepoBlobSplatRoute
+  '/$owner/$repo/commit/$sha': typeof ProtectedOwnerRepoCommitShaRoute
   '/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
@@ -244,6 +252,7 @@ export interface FileRoutesByTo {
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/$owner/$repo': typeof ProtectedOwnerRepoIndexRoute
   '/$owner/$repo/blob/$': typeof ProtectedOwnerRepoBlobSplatRoute
+  '/$owner/$repo/commit/$sha': typeof ProtectedOwnerRepoCommitShaRoute
   '/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
@@ -276,6 +285,7 @@ export interface FileRoutesById {
   '/api/github/app/callback': typeof ApiGithubAppCallbackRoute
   '/_protected/$owner/$repo/': typeof ProtectedOwnerRepoIndexRoute
   '/_protected/$owner/$repo/blob/$': typeof ProtectedOwnerRepoBlobSplatRoute
+  '/_protected/$owner/$repo/commit/$sha': typeof ProtectedOwnerRepoCommitShaRoute
   '/_protected/$owner/$repo/issues/$issueId': typeof ProtectedOwnerRepoIssuesIssueIdRoute
   '/_protected/$owner/$repo/issues/new': typeof ProtectedOwnerRepoIssuesNewRoute
   '/_protected/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
@@ -308,6 +318,7 @@ export interface FileRouteTypes {
     | '/api/github/app/callback'
     | '/$owner/$repo/'
     | '/$owner/$repo/blob/$'
+    | '/$owner/$repo/commit/$sha'
     | '/$owner/$repo/issues/$issueId'
     | '/$owner/$repo/issues/new'
     | '/$owner/$repo/pull/$pullId'
@@ -337,6 +348,7 @@ export interface FileRouteTypes {
     | '/api/github/app/callback'
     | '/$owner/$repo'
     | '/$owner/$repo/blob/$'
+    | '/$owner/$repo/commit/$sha'
     | '/$owner/$repo/issues/$issueId'
     | '/$owner/$repo/issues/new'
     | '/$owner/$repo/pull/$pullId'
@@ -368,6 +380,7 @@ export interface FileRouteTypes {
     | '/api/github/app/callback'
     | '/_protected/$owner/$repo/'
     | '/_protected/$owner/$repo/blob/$'
+    | '/_protected/$owner/$repo/commit/$sha'
     | '/_protected/$owner/$repo/issues/$issueId'
     | '/_protected/$owner/$repo/issues/new'
     | '/_protected/$owner/$repo/pull/$pullId'
@@ -587,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedOwnerRepoIssuesIssueIdRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_protected/$owner/$repo/commit/$sha': {
+      id: '/_protected/$owner/$repo/commit/$sha'
+      path: '/$owner/$repo/commit/$sha'
+      fullPath: '/$owner/$repo/commit/$sha'
+      preLoaderRoute: typeof ProtectedOwnerRepoCommitShaRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
     '/_protected/$owner/$repo/blob/$': {
       id: '/_protected/$owner/$repo/blob/$'
       path: '/$owner/$repo/blob/$'
@@ -622,6 +642,7 @@ interface ProtectedRouteChildren {
   ProtectedOwnerRepoPullsRoute: typeof ProtectedOwnerRepoPullsRoute
   ProtectedOwnerRepoIndexRoute: typeof ProtectedOwnerRepoIndexRoute
   ProtectedOwnerRepoBlobSplatRoute: typeof ProtectedOwnerRepoBlobSplatRoute
+  ProtectedOwnerRepoCommitShaRoute: typeof ProtectedOwnerRepoCommitShaRoute
   ProtectedOwnerRepoIssuesIssueIdRoute: typeof ProtectedOwnerRepoIssuesIssueIdRoute
   ProtectedOwnerRepoIssuesNewRoute: typeof ProtectedOwnerRepoIssuesNewRoute
   ProtectedOwnerRepoPullPullIdRoute: typeof ProtectedOwnerRepoPullPullIdRoute
@@ -642,6 +663,7 @@ const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedOwnerRepoPullsRoute: ProtectedOwnerRepoPullsRoute,
   ProtectedOwnerRepoIndexRoute: ProtectedOwnerRepoIndexRoute,
   ProtectedOwnerRepoBlobSplatRoute: ProtectedOwnerRepoBlobSplatRoute,
+  ProtectedOwnerRepoCommitShaRoute: ProtectedOwnerRepoCommitShaRoute,
   ProtectedOwnerRepoIssuesIssueIdRoute: ProtectedOwnerRepoIssuesIssueIdRoute,
   ProtectedOwnerRepoIssuesNewRoute: ProtectedOwnerRepoIssuesNewRoute,
   ProtectedOwnerRepoPullPullIdRoute: ProtectedOwnerRepoPullPullIdRoute,

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type TabType = "pull" | "issue" | "review" | "repo";
+export type TabType = "pull" | "issue" | "review" | "repo" | "commit";
 
 export interface Tab {
 	id: string;
@@ -23,6 +23,7 @@ const VALID_TAB_TYPES = {
 	issue: true,
 	review: true,
 	repo: true,
+	commit: true,
 } satisfies Record<TabType, true>;
 
 function isValidTabType(type: unknown): type is TabType {

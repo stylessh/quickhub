@@ -1,14 +1,61 @@
 import { GitCommitIcon } from "@diffkit/icons";
+import { Skeleton } from "@diffkit/ui/components/skeleton";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@diffkit/ui/components/tooltip";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { formatRelativeTime } from "#/lib/format-relative-time";
+import {
+	type GitHubQueryScope,
+	githubRefHeadCommitQueryOptions,
+} from "#/lib/github.query";
 import type { RepoOverview } from "#/lib/github.types";
 
-export function LatestCommitBar({ repo }: { repo: RepoOverview }) {
-	const commit = repo.latestCommit;
+export function LatestCommitBar({
+	owner,
+	repoName,
+	ref,
+	scope,
+	defaultBranch,
+	defaultBranchTip,
+}: {
+	owner: string;
+	repoName: string;
+	ref: string;
+	scope: GitHubQueryScope;
+	defaultBranch: string;
+	defaultBranchTip: RepoOverview["latestCommit"];
+}) {
+	const tipQuery = useQuery({
+		...githubRefHeadCommitQueryOptions(scope, {
+			owner,
+			repo: repoName,
+			ref,
+		}),
+		placeholderData:
+			ref === defaultBranch && defaultBranchTip != null
+				? defaultBranchTip
+				: undefined,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+	});
+
+	const commit = tipQuery.data;
+
+	if (tipQuery.isPending && commit == null) {
+		return (
+			<div className="flex items-center gap-3 rounded-t-lg border border-b-0 bg-surface-1 px-4 py-2.5 text-sm">
+				<Skeleton className="size-5 shrink-0 rounded-full" />
+				<Skeleton className="h-4 w-20 shrink-0 rounded" />
+				<Skeleton className="h-4 min-w-0 flex-1 rounded" />
+				<Skeleton className="h-4 w-24 shrink-0 rounded" />
+			</div>
+		);
+	}
+
 	if (!commit) return null;
 
 	const shortSha = commit.sha.slice(0, 7);
@@ -24,18 +71,17 @@ export function LatestCommitBar({ repo }: { repo: RepoOverview }) {
 				/>
 			)}
 			<span className="font-medium">{commit.author?.login ?? "Unknown"}</span>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<span className="min-w-0 flex-1 truncate text-muted-foreground">
-						{firstLine}
-					</span>
-				</TooltipTrigger>
-				{firstLine.length > 60 && (
-					<TooltipContent side="bottom" className="max-w-sm">
-						{firstLine}
-					</TooltipContent>
-				)}
-			</Tooltip>
+			<Link
+				to="/$owner/$repo/commit/$sha"
+				params={{
+					owner,
+					repo: repoName,
+					sha: commit.sha,
+				}}
+				className="min-w-0 flex-1 truncate text-left text-muted-foreground transition-colors hover:text-foreground hover:underline"
+			>
+				{firstLine}
+			</Link>
 			<div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
 				<Tooltip>
 					<TooltipTrigger asChild>

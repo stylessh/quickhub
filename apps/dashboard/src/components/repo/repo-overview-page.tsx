@@ -75,7 +75,14 @@ export function RepoOverviewPage() {
 						/>
 
 						<div>
-							<LatestCommitBar repo={repoData} />
+							<LatestCommitBar
+								owner={owner}
+								repoName={repo}
+								ref={activeRef}
+								scope={scope}
+								defaultBranch={repoData.defaultBranch}
+								defaultBranchTip={repoData.latestCommit}
+							/>
 							{treeQuery.data ? (
 								<FileTree
 									entries={treeQuery.data}
