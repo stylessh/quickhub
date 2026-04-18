@@ -1,0 +1,67 @@
+name: Dashboard — production deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/dashboard/**"
+      - "scripts/generate-wrangler-dashboard-config.mjs"
+      - "scripts/run-d1-migrations.mjs"
+      - ".github/workflows/dashboard-deploy-production.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dashboard-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Wrangler config
+        run: node scripts/generate-wrangler-dashboard-config.mjs apps/dashboard/wrangler.deploy.json
+        env:
+          WRANGLER_COMPATIBILITY_DATE: ${{ vars.WRANGLER_COMPATIBILITY_DATE }}
+          DASHBOARD_PROD_WORKER_NAME: ${{ secrets.DASHBOARD_PROD_WORKER_NAME }}
+          DASHBOARD_PROD_D1_DATABASE_NAME: ${{ secrets.DASHBOARD_PROD_D1_DATABASE_NAME }}
+          DASHBOARD_PROD_D1_DATABASE_ID: ${{ secrets.DASHBOARD_PROD_D1_DATABASE_ID }}
+          DASHBOARD_PROD_KV_ID: ${{ secrets.DASHBOARD_PROD_KV_ID }}
+          DASHBOARD_PROD_KV_PREVIEW_ID: ${{ secrets.DASHBOARD_PROD_KV_PREVIEW_ID }}
+          DASHBOARD_PROD_R2_BUCKET: ${{ secrets.DASHBOARD_PROD_R2_BUCKET }}
+          DASHBOARD_PROD_R2_PREVIEW_BUCKET: ${{ secrets.DASHBOARD_PROD_R2_PREVIEW_BUCKET }}
+
+      # @cloudflare/vite-plugin resolves `wrangler.jsonc` during `vite build` (deploy:ci).
+      - name: Stage Wrangler config for Vite
+        working-directory: apps/dashboard
+        run: cp wrangler.deploy.json wrangler.jsonc
+
+      - name: Apply D1 migrations (remote)
+        working-directory: apps/dashboard
+        env:
+          WRANGLER_CONFIG: wrangler.deploy.json
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types ../../scripts/run-d1-migrations.mjs DB --remote
+
+      - name: Build and deploy Worker
+        working-directory: apps/dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm run deploy:ci

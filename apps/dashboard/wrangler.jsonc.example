@@ -1,3 +1,23 @@
+// Local setup:
+//   cp wrangler.jsonc.example wrangler.dev.jsonc
+//   Vite dev / Vitest load `wrangler.dev.jsonc` (gitignored). Fill in placeholders there.
+//
+// Optional — only if you run `vite build` or `wrangler deploy` without `--config`:
+//   cp wrangler.jsonc.example wrangler.jsonc
+//
+// GitHub Actions (production) secrets — map into generated `wrangler.deploy.json`:
+//   CLOUDFLARE_API_TOKEN
+//   CLOUDFLARE_ACCOUNT_ID
+//   DASHBOARD_PROD_WORKER_NAME
+//   DASHBOARD_PROD_D1_DATABASE_NAME
+//   DASHBOARD_PROD_D1_DATABASE_ID
+//   DASHBOARD_PROD_KV_ID
+//   DASHBOARD_PROD_KV_PREVIEW_ID        (optional; defaults to DASHBOARD_PROD_KV_ID)
+//   DASHBOARD_PROD_R2_BUCKET
+//   DASHBOARD_PROD_R2_PREVIEW_BUCKET
+//
+// Optional repository variables:
+//   WRANGLER_COMPATIBILITY_DATE
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "diffkit",
