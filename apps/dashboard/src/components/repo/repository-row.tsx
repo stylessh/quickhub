@@ -1,6 +1,18 @@
-import { SquareLock02Icon, StarIcon, ViewIcon } from "@diffkit/icons";
+import {
+	GitForkIcon,
+	SquareLock02Icon,
+	StarIcon,
+	ViewIcon,
+} from "@diffkit/icons";
 import { Link } from "@tanstack/react-router";
-import { Fragment, memo, type ReactNode } from "react";
+import {
+	Fragment,
+	memo,
+	type ReactNode,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { RepoCommitSparkline } from "#/components/repo/repo-commit-sparkline";
 import { formatRelativeTime } from "#/lib/format-relative-time";
 import type { GitHubQueryScope } from "#/lib/github.query";
@@ -89,6 +101,17 @@ export const RepositoryRow = memo(function RepositoryRow({
 			),
 		});
 	}
+	if (repo.forks > 0) {
+		metaEntries.push({
+			key: "forks",
+			node: (
+				<span className="flex shrink-0 items-center gap-1 tabular-nums">
+					<GitForkIcon size={13} strokeWidth={2} />
+					{formatCount(repo.forks)}
+				</span>
+			),
+		});
+	}
 
 	return (
 		<Link
@@ -129,16 +152,60 @@ export const RepositoryRow = memo(function RepositoryRow({
 					<span className="text-xs text-muted-foreground/40">—</span>
 				</div>
 			)}
-			<div className="flex items-start justify-end">
-				<RepoCommitSparkline
-					scope={scope}
-					owner={repo.owner}
-					repo={repo.name}
-				/>
-			</div>
+			<LazyRepoCommitSparkline
+				scope={scope}
+				owner={repo.owner}
+				repo={repo.name}
+			/>
 		</Link>
 	);
 });
+
+function LazyRepoCommitSparkline({
+	scope,
+	owner,
+	repo,
+}: {
+	scope: GitHubQueryScope;
+	owner: string;
+	repo: string;
+}) {
+	const containerRef = useRef<HTMLDivElement>(null);
+	const [showChart, setShowChart] = useState(false);
+
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) {
+			return;
+		}
+
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				if (entry?.isIntersecting) {
+					setShowChart(true);
+					observer.disconnect();
+				}
+			},
+			{ rootMargin: "240px 0px", threshold: 0 },
+		);
+
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
+
+	return (
+		<div ref={containerRef} className="flex items-start justify-end">
+			{showChart ? (
+				<RepoCommitSparkline scope={scope} owner={owner} repo={repo} />
+			) : (
+				<div
+					className="h-[52px] w-[168px] shrink-0 rounded-sm bg-muted/15"
+					aria-hidden
+				/>
+			)}
+		</div>
+	);
+}
 
 function formatCount(count: number): string {
 	if (count >= 1000) {

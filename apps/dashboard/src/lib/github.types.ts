@@ -39,6 +39,7 @@ export type UserRepoSummary = {
 	fullName: string;
 	description: string | null;
 	stars: number;
+	forks: number;
 	language: string | null;
 	updatedAt: string | null;
 	createdAt: string | null;

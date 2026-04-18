@@ -415,6 +415,7 @@ function mapGithubRestRepoToUserRepoSummary(
 		fullName: repo.full_name ?? "",
 		description: repo.description ?? null,
 		stars: repo.stargazers_count ?? 0,
+		forks: repo.forks_count ?? 0,
 		language: repo.language ?? null,
 		updatedAt: repo.updated_at ?? null,
 		createdAt: repo.created_at ?? null,
@@ -2109,9 +2110,17 @@ async function appInstallationHasRepositoryAccess(
 	}
 
 	try {
+		const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+		const appUserOctokit = await getGitHubAppUserClientByUserId(
+			context.session.user.id,
+		);
+		if (!appUserOctokit) {
+			return false;
+		}
+
 		const repositories = await listPaginatedGitHubItems({
 			request: (page) =>
-				context.octokit.rest.apps.listInstallationReposForAuthenticatedUser({
+				appUserOctokit.rest.apps.listInstallationReposForAuthenticatedUser({
 					installation_id: installation.id,
 					page,
 					per_page: 100,
@@ -7747,66 +7756,83 @@ export const getRepoParticipationStats = createServerFn({ method: "GET" })
 			namespaceKeys: [repoMetaKey, repoCodeKey],
 			cacheMode: "split",
 			fetcher: async (conditionals) => {
-				try {
-					const response =
-						await context.octokit.rest.repos.getParticipationStats({
-							owner: data.owner,
-							repo: data.repo,
-							headers: buildConditionalHeaders(conditionals),
-						});
+				const maxAttempts = 6;
+				const retryDelayMs = 1_500;
 
-					const weeklyCommits = Array.isArray(response.data?.all)
-						? response.data.all
-						: [];
+				for (let attempt = 0; attempt < maxAttempts; attempt++) {
+					const headers = buildConditionalHeaders(
+						attempt === 0 ? conditionals : { etag: null, lastModified: null },
+					);
 
-					return {
-						kind: "success",
-						data: { weeklyCommits },
-						metadata: createGitHubResponseMetadata(
-							response.status,
-							normalizeResponseHeaders(response.headers),
-						),
-					};
-				} catch (error) {
-					if (
-						error instanceof RequestError &&
-						error.status === 304 &&
-						error.response?.headers
-					) {
+					try {
+						const response =
+							await context.octokit.rest.repos.getParticipationStats({
+								owner: data.owner,
+								repo: data.repo,
+								headers,
+							});
+
+						const weeklyCommits = Array.isArray(response.data?.all)
+							? response.data.all
+							: [];
+
 						return {
-							kind: "not-modified",
+							kind: "success",
+							data: { weeklyCommits },
 							metadata: createGitHubResponseMetadata(
-								304,
-								normalizeResponseHeaders(
-									error.response.headers as Record<string, unknown>,
-								),
+								response.status,
+								normalizeResponseHeaders(response.headers),
 							),
 						};
-					}
-
-					if (error instanceof RequestError) {
+					} catch (error) {
 						if (
-							error.status === 404 ||
-							error.status === 403 ||
-							error.status === 202
+							error instanceof RequestError &&
+							error.status === 304 &&
+							error.response?.headers
 						) {
 							return {
-								kind: "success",
-								data: { weeklyCommits: [] },
+								kind: "not-modified",
 								metadata: createGitHubResponseMetadata(
-									error.status,
-									error.response?.headers
-										? normalizeResponseHeaders(
-												error.response.headers as Record<string, unknown>,
-											)
-										: {},
+									304,
+									normalizeResponseHeaders(
+										error.response.headers as Record<string, unknown>,
+									),
 								),
 							};
 						}
-					}
 
-					throw error;
+						if (error instanceof RequestError && error.status === 202) {
+							if (attempt < maxAttempts - 1) {
+								await new Promise((resolve) =>
+									setTimeout(resolve, retryDelayMs),
+								);
+								continue;
+							}
+							throw error;
+						}
+
+						if (error instanceof RequestError) {
+							if (error.status === 404 || error.status === 403) {
+								return {
+									kind: "success",
+									data: { weeklyCommits: [] },
+									metadata: createGitHubResponseMetadata(
+										error.status,
+										error.response?.headers
+											? normalizeResponseHeaders(
+													error.response.headers as Record<string, unknown>,
+												)
+											: {},
+									),
+								};
+							}
+						}
+
+						throw error;
+					}
 				}
+
+				throw new Error("participation stats: exhausted 202 retries");
 			},
 		});
 	});
