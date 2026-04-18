@@ -10,6 +10,7 @@ import {
 	type GitHubAppAccessState,
 	getAccessHrefForOwner,
 } from "#/lib/github-access";
+import { clearProtectedRouteCachedAuth } from "#/lib/protected-auth-cache";
 import { buildSeo, formatPageTitle, PRIVATE_ROUTE_HEADERS } from "#/lib/seo";
 import { useRefreshOnReturn } from "#/lib/use-refresh-on-return";
 
@@ -26,6 +27,7 @@ function SetupPageLoading() {
 export const Route = createFileRoute("/setup")({
 	pendingComponent: SetupPageLoading,
 	beforeLoad: async () => {
+		clearProtectedRouteCachedAuth();
 		const session = await getSession();
 		if (!session) {
 			throw redirect({ to: "/login", search: { redirect: "/setup" } });

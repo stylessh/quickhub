@@ -16,6 +16,7 @@ import {
 import { type ComponentType, useEffect } from "react";
 import { useShowOrgSetupQueryState } from "#/lib/github-access-dialog-query";
 import { openGitHubAccessPrompt } from "#/lib/github-access-modal-store";
+import { clearProtectedRouteCachedAuth } from "#/lib/protected-auth-cache";
 import { surfaceForbiddenOrgWarnings } from "#/lib/warning-store";
 
 type ErrorInfo = {
@@ -23,7 +24,7 @@ type ErrorInfo = {
 	iconClassName: string;
 	title: string;
 	description: string;
-	action: "retry" | "configure-access" | "go-home";
+	action: "retry" | "configure-access" | "go-home" | "reauthorize-github-app";
 };
 
 function getErrorInfo(error: Error): ErrorInfo {
@@ -38,6 +39,21 @@ function getErrorInfo(error: Error): ErrorInfo {
 			description:
 				"You've made too many requests. Wait a moment and try again.",
 			action: "retry",
+		};
+	}
+
+	if (
+		lower.includes("bad credentials") ||
+		lower.includes("docs.github.com/rest") ||
+		/\b401\b/.test(lower)
+	) {
+		return {
+			icon: LockIcon,
+			iconClassName: "bg-amber-500/10 text-amber-500",
+			title: "GitHub access needs review",
+			description:
+				"Approve DiffKit again on GitHub — for example after the app’s permissions or credentials changed.",
+			action: "reauthorize-github-app",
 		};
 	}
 
@@ -169,6 +185,9 @@ export function DashboardErrorScreen({ error, reset }: ErrorComponentProps) {
 
 				<div className="flex items-center gap-2">
 					{action === "configure-access" ? <ConfigureAccessButton /> : null}
+					{action === "reauthorize-github-app" ? (
+						<ReauthorizeGitHubAppButton />
+					) : null}
 					{action === "go-home" ? (
 						<Button variant="ghost" size="sm" asChild>
 							<Link to="/">Go home</Link>
@@ -204,6 +223,21 @@ function ConfigureAccessButton() {
 			}}
 		>
 			Configure access
+		</Button>
+	);
+}
+
+function ReauthorizeGitHubAppButton() {
+	return (
+		<Button size="sm" asChild>
+			<Link
+				to="/setup"
+				onClick={() => {
+					clearProtectedRouteCachedAuth();
+				}}
+			>
+				Review GitHub access
+			</Link>
 		</Button>
 	);
 }

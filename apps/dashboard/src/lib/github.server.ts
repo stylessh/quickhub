@@ -5,6 +5,7 @@ import {
 	getGitHubAppId,
 	getGitHubAppPrivateKey,
 } from "./github-app.server";
+import { shouldReauthorizeGitHubApp } from "./github-auth-errors";
 import { configureGitHubRequestPolicies } from "./github-request-policy";
 
 const GITHUB_CLIENT_USER_AGENT = "diffkit-dashboard";
@@ -193,10 +194,20 @@ async function mintGitHubInstallationToken(
 		tokenLabel: `app-auth:installation:${installationId}`,
 	});
 
-	const auth = (await app.octokit.auth({
-		type: "installation",
-		installationId,
-	})) as GitHubInstallationAuthResult;
+	let auth: GitHubInstallationAuthResult;
+	try {
+		auth = (await app.octokit.auth({
+			type: "installation",
+			installationId,
+		})) as GitHubInstallationAuthResult;
+	} catch (error) {
+		if (shouldReauthorizeGitHubApp(error)) {
+			throw new Error("Bad credentials - https://docs.github.com/rest", {
+				cause: error,
+			});
+		}
+		throw error;
+	}
 
 	if (!auth.token || !auth.expiresAt) {
 		throw new Error(

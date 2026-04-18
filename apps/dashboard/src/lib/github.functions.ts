@@ -65,6 +65,7 @@ import {
 	type GitHubOrganization,
 	isRepoVisibleWithInstallationAccess,
 } from "./github-access";
+import { shouldReauthorizeGitHubApp } from "./github-auth-errors";
 import { getGitHubAppSlug } from "./github-app.server";
 import {
 	bumpGitHubCacheNamespaces,
@@ -5056,7 +5057,29 @@ export const checkSetupComplete = createServerFn({
 	}
 
 	const { hasGitHubAppUserAccount } = await import("./github-app.server");
-	return hasGitHubAppUserAccount(session.user.id);
+	if (!(await hasGitHubAppUserAccount(session.user.id))) {
+		return false;
+	}
+
+	const { getGitHubAppUserClientByUserId } = await import("./auth-runtime");
+	try {
+		const appUserOctokit = await getGitHubAppUserClientByUserId(
+			session.user.id,
+		);
+		if (!appUserOctokit) {
+			return false;
+		}
+
+		await appUserOctokit.request("GET /user/installations", {
+			per_page: 1,
+		});
+		return true;
+	} catch (error) {
+		if (shouldReauthorizeGitHubApp(error)) {
+			return false;
+		}
+		throw error;
+	}
 });
 
 export const getGitHubAppAccessState = createServerFn({

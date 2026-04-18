@@ -3,6 +3,11 @@ import { DashboardLayout } from "#/components/layouts/dashboard-layout";
 import { ErrorScreen } from "#/components/layouts/error-screen";
 import { getSession } from "#/lib/auth.functions";
 import { checkSetupComplete } from "#/lib/github.functions";
+import {
+	clearProtectedRouteCachedAuth,
+	getProtectedRouteCachedAuth,
+	setProtectedRouteCachedAuth,
+} from "#/lib/protected-auth-cache";
 import { buildSeo, formatPageTitle, PRIVATE_ROUTE_HEADERS } from "#/lib/seo";
 
 /**
@@ -10,10 +15,9 @@ import { buildSeo, formatPageTitle, PRIVATE_ROUTE_HEADERS } from "#/lib/seo";
  * The cache is cleared on full page reloads. If the session expires mid-use,
  * API calls in child routes will 401 and the error boundary handles it.
  */
-let cachedAuth: Awaited<ReturnType<typeof getSession>> | null = null;
-
 export const Route = createFileRoute("/_protected")({
 	beforeLoad: async ({ location }) => {
+		const cachedAuth = getProtectedRouteCachedAuth();
 		if (cachedAuth) return cachedAuth;
 
 		const [session, setupComplete] = await Promise.all([
@@ -32,8 +36,9 @@ export const Route = createFileRoute("/_protected")({
 			throw redirect({ to: "/setup" });
 		}
 
-		cachedAuth = { user: session.user, session: session.session };
-		return cachedAuth;
+		const next = { user: session.user, session: session.session };
+		setProtectedRouteCachedAuth(next);
+		return next;
 	},
 	headers: () => PRIVATE_ROUTE_HEADERS,
 	head: ({ match }) => {
