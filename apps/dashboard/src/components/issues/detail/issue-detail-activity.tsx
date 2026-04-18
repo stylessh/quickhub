@@ -633,12 +633,22 @@ function IssueCommentBubble({
 	onReply?: () => void;
 	isReply?: boolean;
 }) {
+	const [commentActive, setCommentActive] = useState(false);
+
 	return (
 		<div
 			className={cn(
 				"group/comment relative flex flex-col gap-1",
 				isReply ? "py-2" : "py-4",
 			)}
+			onPointerEnter={() => setCommentActive(true)}
+			onPointerLeave={() => setCommentActive(false)}
+			onFocusCapture={() => setCommentActive(true)}
+			onBlurCapture={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setCommentActive(false);
+				}
+			}}
 		>
 			<div className="flex items-center gap-1.5">
 				{comment.author ? (
@@ -694,18 +704,23 @@ function IssueCommentBubble({
 					/>
 				</div>
 			</div>
-			<Markdown className="text-muted-foreground">{comment.body}</Markdown>
-			{comment.graphqlId ? (
-				<IssueCommentReactionBar
-					owner={owner}
-					repo={repo}
-					issueNumber={issueNumber}
-					commentId={comment.id}
-					commentGraphqlId={comment.graphqlId}
-					scope={scope}
-					reactions={comment.reactions}
-				/>
-			) : null}
+			<div className={cn("relative", comment.graphqlId != null && "mb-14")}>
+				<Markdown className="text-muted-foreground">{comment.body}</Markdown>
+				{comment.graphqlId ? (
+					<IssueCommentReactionBar
+						className="absolute left-0 right-0 top-full z-10 mt-1.5"
+						revealZeroCount={commentActive}
+						viewerLogin={viewerLogin}
+						owner={owner}
+						repo={repo}
+						issueNumber={issueNumber}
+						commentId={comment.id}
+						commentGraphqlId={comment.graphqlId}
+						scope={scope}
+						reactions={comment.reactions}
+					/>
+				) : null}
+			</div>
 		</div>
 	);
 }

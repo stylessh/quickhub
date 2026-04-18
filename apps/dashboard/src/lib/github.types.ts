@@ -148,6 +148,8 @@ export type CommentReactionSummary = {
 	counts: Partial<Record<CommentReactionContent, number>>;
 	/** Reaction types the authenticated user has left on this comment */
 	viewerReacted: CommentReactionContent[];
+	/** User logins per reaction type (API order; used for tooltips) */
+	userLoginsByContent?: Partial<Record<CommentReactionContent, string[]>>;
 };
 
 export type PullComment = {

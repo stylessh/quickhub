@@ -1102,6 +1102,8 @@ function buildCommentReactionSummary(
 
 	const counts: Partial<Record<CommentReactionContent, number>> = {};
 	const viewerReacted: CommentReactionContent[] = [];
+	const userLoginsByContent: Partial<Record<CommentReactionContent, string[]>> =
+		{};
 
 	for (const node of list) {
 		const rest = gqlReactionContentToRest(node.content);
@@ -1109,12 +1111,19 @@ function buildCommentReactionSummary(
 			continue;
 		}
 		counts[rest] = (counts[rest] ?? 0) + 1;
+		const login = node.user?.login;
+		if (login) {
+			if (!userLoginsByContent[rest]) {
+				userLoginsByContent[rest] = [];
+			}
+			userLoginsByContent[rest].push(login);
+		}
 		if (viewerLogin && node.user?.login === viewerLogin) {
 			viewerReacted.push(rest);
 		}
 	}
 
-	return { counts, viewerReacted };
+	return { counts, viewerReacted, userLoginsByContent };
 }
 
 function mapGraphQLComments(

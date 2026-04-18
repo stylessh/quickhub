@@ -1,7 +1,14 @@
 import { toast } from "@diffkit/ui/components/sonner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@diffkit/ui/components/tooltip";
 import { cn } from "@diffkit/ui/lib/utils";
+import NumberFlow from "@number-flow/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef } from "react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { Fragment, useCallback, useRef } from "react";
 import { toggleIssueCommentReaction } from "#/lib/github.functions";
 import { type GitHubQueryScope, githubQueryKeys } from "#/lib/github.query";
 import type {
@@ -35,11 +42,33 @@ const QUICK_REACTIONS: { content: CommentReactionContent; emoji: string }[] = [
 	{ content: "eyes", emoji: REACTION_EMOJI.eyes },
 ];
 
+const reactionSpring = {
+	type: "spring" as const,
+	duration: 0.22,
+	bounce: 0.12,
+};
+
+function reactionActorTooltipText(
+	logins: string[] | undefined,
+	total: number,
+): string {
+	if (total <= 0) {
+		return "";
+	}
+	if (!logins?.length) {
+		return total === 1 ? "1 reaction" : `${total} reactions`;
+	}
+	const shown = logins.slice(0, 10);
+	const rest = total - shown.length;
+	return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+}
+
 function patchCommentReactions(
 	prev: IssuePageData | PullPageData | undefined,
 	commentId: number,
 	content: CommentReactionContent,
 	remove: boolean,
+	viewerLogin: string | undefined,
 ): IssuePageData | PullPageData | undefined {
 	if (!prev?.comments?.length) {
 		return prev;
@@ -54,19 +83,49 @@ function patchCommentReactions(
 		const base = c.reactions ?? { counts: {}, viewerReacted: [] };
 		const counts = { ...base.counts };
 		const viewerReacted = [...base.viewerReacted];
+		const userLoginsByContent: Partial<
+			Record<CommentReactionContent, string[]>
+		> = { ...(base.userLoginsByContent ?? {}) };
+		const loginsFor = [...(userLoginsByContent[content] ?? [])];
+
 		if (remove) {
 			counts[content] = Math.max(0, (counts[content] ?? 0) - 1);
 			const i = viewerReacted.indexOf(content);
 			if (i >= 0) {
 				viewerReacted.splice(i, 1);
 			}
+			if (viewerLogin) {
+				const li = loginsFor.lastIndexOf(viewerLogin);
+				if (li >= 0) {
+					loginsFor.splice(li, 1);
+				}
+			}
 		} else {
 			counts[content] = (counts[content] ?? 0) + 1;
 			if (!viewerReacted.includes(content)) {
 				viewerReacted.push(content);
 			}
+			if (viewerLogin && !loginsFor.includes(viewerLogin)) {
+				loginsFor.push(viewerLogin);
+			}
 		}
-		return { ...c, reactions: { counts, viewerReacted } };
+
+		if (loginsFor.length === 0) {
+			delete userLoginsByContent[content];
+		} else {
+			userLoginsByContent[content] = loginsFor;
+		}
+
+		return {
+			...c,
+			reactions: {
+				counts,
+				viewerReacted,
+				...(Object.keys(userLoginsByContent).length > 0
+					? { userLoginsByContent }
+					: {}),
+			},
+		};
 	});
 
 	if (!changed) {
@@ -83,6 +142,10 @@ export function IssueCommentReactionBar({
 	commentGraphqlId,
 	scope,
 	reactions,
+	className,
+	/** When true, show reactions that have zero total count (hover / focus-within). */
+	revealZeroCount,
+	viewerLogin,
 }: {
 	owner: string;
 	repo: string;
@@ -91,6 +154,9 @@ export function IssueCommentReactionBar({
 	commentGraphqlId: string;
 	scope: GitHubQueryScope;
 	reactions?: CommentReactionSummary;
+	className?: string;
+	revealZeroCount: boolean;
+	viewerLogin?: string | null;
 }) {
 	const queryClient = useQueryClient();
 	const flight = useRef(false);
@@ -110,17 +176,18 @@ export function IssueCommentReactionBar({
 		(content: CommentReactionContent, remove: boolean) => {
 			const prevIssue = queryClient.getQueryData<IssuePageData>(issuePageKey);
 			const prevPull = queryClient.getQueryData<PullPageData>(pullPageKey);
+			const viewer = viewerLogin ?? undefined;
 			queryClient.setQueryData(
 				issuePageKey,
-				patchCommentReactions(prevIssue, commentId, content, remove),
+				patchCommentReactions(prevIssue, commentId, content, remove, viewer),
 			);
 			queryClient.setQueryData(
 				pullPageKey,
-				patchCommentReactions(prevPull, commentId, content, remove),
+				patchCommentReactions(prevPull, commentId, content, remove, viewer),
 			);
 			return { prevIssue, prevPull };
 		},
-		[commentId, issuePageKey, pullPageKey, queryClient],
+		[commentId, issuePageKey, pullPageKey, queryClient, viewerLogin],
 	);
 
 	const rollback = useCallback(
@@ -166,33 +233,89 @@ export function IssueCommentReactionBar({
 		}
 	};
 
+	const counts = reactions?.counts ?? {};
+	const orderedReactions = [
+		...QUICK_REACTIONS.filter((item) => (counts[item.content] ?? 0) > 0),
+		...(revealZeroCount
+			? QUICK_REACTIONS.filter((item) => (counts[item.content] ?? 0) === 0)
+			: []),
+	];
+
 	return (
-		<div className="mt-1.5 flex flex-wrap items-center gap-1">
-			{QUICK_REACTIONS.map(({ content, emoji }) => {
-				const count = reactions?.counts[content] ?? 0;
-				const active = reactions?.viewerReacted.includes(content) ?? false;
-				return (
-					<button
-						key={content}
-						type="button"
-						onClick={() => void handleToggle(content)}
-						className={cn(
-							"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
-							active
-								? "border-accent-foreground/30 bg-accent/15 text-foreground"
-								: "border-transparent bg-surface-1 text-muted-foreground hover:bg-surface-2 hover:text-foreground",
-							count === 0 &&
-								"hidden group-hover/comment:inline-flex group-focus-within/comment:inline-flex",
-						)}
-						aria-label={`React with ${content}`}
-					>
-						<span aria-hidden>{emoji}</span>
-						{count > 0 && (
-							<span className="min-w-[1ch] tabular-nums">{count}</span>
-						)}
-					</button>
-				);
-			})}
-		</div>
+		<LayoutGroup>
+			<motion.div
+				layout
+				className={cn("flex flex-wrap items-center gap-1", className)}
+				transition={reactionSpring}
+			>
+				<AnimatePresence initial={false} mode="popLayout">
+					{orderedReactions.flatMap(({ content, emoji }) => {
+						const count = counts[content] ?? 0;
+						const active = reactions?.viewerReacted.includes(content) ?? false;
+						const tooltipText = reactionActorTooltipText(
+							reactions?.userLoginsByContent?.[content],
+							count,
+						);
+						const chip = (
+							<motion.button
+								key={content}
+								type="button"
+								layout
+								initial={{ opacity: 0, scale: 0.82 }}
+								animate={{ opacity: 1, scale: 1 }}
+								exit={{ opacity: 0, scale: 0.82 }}
+								transition={reactionSpring}
+								onClick={() => void handleToggle(content)}
+								className={cn(
+									"relative inline-flex h-6 items-center gap-2 rounded-full border px-2.5 text-xs transition-colors",
+									"border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+									active
+										? "bg-surface-2 hover:bg-surface-1 hover:text-foreground"
+										: "bg-surface-1 hover:bg-surface-2 hover:text-foreground",
+								)}
+								aria-label={`React with ${content}`}
+							>
+								<span
+									aria-hidden
+									className={cn(content === "eyes" && "translate-y-px")}
+								>
+									{emoji}
+								</span>
+								<AnimatePresence initial={false} mode="popLayout">
+									{count > 0 ? (
+										<motion.span
+											key="count"
+											layout
+											initial={{ opacity: 0, scale: 0.88 }}
+											animate={{ opacity: 1, scale: 1 }}
+											exit={{ opacity: 0, scale: 0.88 }}
+											transition={reactionSpring}
+											className="inline-flex min-w-[1ch] items-center"
+										>
+											<NumberFlow value={count} className="tabular-nums" />
+										</motion.span>
+									) : null}
+								</AnimatePresence>
+							</motion.button>
+						);
+						return [
+							count > 0 ? (
+								<Tooltip key={content} delayDuration={300}>
+									<TooltipTrigger asChild>{chip}</TooltipTrigger>
+									<TooltipContent
+										side="top"
+										className="max-w-xs text-xs leading-snug"
+									>
+										{tooltipText}
+									</TooltipContent>
+								</Tooltip>
+							) : (
+								<Fragment key={content}>{chip}</Fragment>
+							),
+						];
+					})}
+				</AnimatePresence>
+			</motion.div>
+		</LayoutGroup>
 	);
 }
