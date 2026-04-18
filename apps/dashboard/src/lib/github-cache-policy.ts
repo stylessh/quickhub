@@ -35,6 +35,10 @@ export const githubCachePolicy = {
 		staleTimeMs: 30 * 60 * 1000,
 		gcTimeMs: 24 * 60 * 60 * 1000,
 	},
+	repoParticipation: {
+		staleTimeMs: 60 * 60 * 1000,
+		gcTimeMs: 24 * 60 * 60 * 1000,
+	},
 	installationAccess: {
 		staleTimeMs: 30 * 60 * 1000,
 		gcTimeMs: 24 * 60 * 60 * 1000,

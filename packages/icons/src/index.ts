@@ -59,7 +59,7 @@ export {
   Settings01Icon as SettingsIcon,
   SidebarLeftIcon as PanelLeftIcon,
   SourceCodeIcon as CodeIcon,
-  StarIcon,
+  SquareLock02Icon,
   Sun01Icon as SunIcon,
   Tick02Icon as CheckIcon,
   Tick02Icon as TickIcon,
@@ -73,3 +73,4 @@ export { ArchiveDownIcon } from "./archive-down-icon";
 export { GitHubLogo, GitHubWordmarkLogo, XLogo } from "./brand-logos";
 export { PenIcon } from "./pen-icon";
 export { SeparatorHorizontalIcon } from "./separator-horizontal-icon";
+export { StarIcon } from "./star-icon";
