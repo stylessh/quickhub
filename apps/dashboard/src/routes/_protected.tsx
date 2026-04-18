@@ -4,8 +4,8 @@ import { ErrorScreen } from "#/components/layouts/error-screen";
 import { getSession } from "#/lib/auth.functions";
 import { checkSetupComplete } from "#/lib/github.functions";
 import {
-	clearProtectedRouteCachedAuth,
 	getProtectedRouteCachedAuth,
+	type ProtectedRouteCachedAuth,
 	setProtectedRouteCachedAuth,
 } from "#/lib/protected-auth-cache";
 import { buildSeo, formatPageTitle, PRIVATE_ROUTE_HEADERS } from "#/lib/seo";
@@ -36,7 +36,23 @@ export const Route = createFileRoute("/_protected")({
 			throw redirect({ to: "/setup" });
 		}
 
-		const next = { user: session.user, session: session.session };
+		const email = session.user.email;
+		if (typeof email !== "string" || email.length === 0) {
+			throw redirect({
+				to: "/login",
+				search: { redirect: location.href },
+			});
+		}
+
+		const next: ProtectedRouteCachedAuth = {
+			user: {
+				id: session.user.id,
+				name: session.user.name,
+				email,
+				image: session.user.image,
+			},
+			session: session.session,
+		};
 		setProtectedRouteCachedAuth(next);
 		return next;
 	},

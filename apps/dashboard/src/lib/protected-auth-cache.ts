@@ -1,12 +1,10 @@
+/** Matches dashboard shell components (e.g. topbar) route context expectations. */
 export type ProtectedRouteCachedAuth = {
 	user: {
 		id: string;
 		name?: string | null;
-		email?: string | null;
+		email: string;
 		image?: string | null;
-		emailVerified?: boolean;
-		createdAt?: Date;
-		updatedAt?: Date;
 	};
 	session: {
 		id: string;
