@@ -65,6 +65,9 @@ export type RequestedTeam = {
 };
 
 export type PullDetail = PullSummary & {
+	/** GraphQL node id (`I_kwD...` / `PR_kwD...`); required for reactions API */
+	graphqlId?: string;
+	reactions?: CommentReactionSummary;
 	body: string;
 	additions: number;
 	deletions: number;
@@ -101,6 +104,9 @@ export type IssueSummary = {
 };
 
 export type IssueDetail = IssueSummary & {
+	/** GraphQL node id (`I_kwD...`); required for reactions API */
+	graphqlId?: string;
+	reactions?: CommentReactionSummary;
 	body: string;
 	assignees: GitHubActor[];
 	milestone: {
@@ -117,6 +123,7 @@ export type MyPullsResult = {
 	mentioned: PullSummary[];
 	involved: PullSummary[];
 	forbiddenOrgs?: string[];
+	partial?: boolean;
 	timedOut?: boolean;
 };
 
@@ -125,6 +132,7 @@ export type MyIssuesResult = {
 	authored: IssueSummary[];
 	mentioned: IssueSummary[];
 	forbiddenOrgs?: string[];
+	partial?: boolean;
 	timedOut?: boolean;
 };
 
@@ -133,18 +141,43 @@ export type CommandPaletteSearchResult = {
 	issues: IssueSummary[];
 };
 
+/** GitHub REST reaction `content` values for issue/PR comments */
+export type CommentReactionContent =
+	| "+1"
+	| "-1"
+	| "laugh"
+	| "confused"
+	| "heart"
+	| "hooray"
+	| "rocket"
+	| "eyes";
+
+export type CommentReactionSummary = {
+	counts: Partial<Record<CommentReactionContent, number>>;
+	/** Reaction types the authenticated user has left on this comment */
+	viewerReacted: CommentReactionContent[];
+	/** User logins per reaction type (API order; used for tooltips) */
+	userLoginsByContent?: Partial<Record<CommentReactionContent, string[]>>;
+};
+
 export type PullComment = {
 	id: number;
+	/** GraphQL node id (`IC_kwD...`); required for reactions API */
+	graphqlId?: string;
 	body: string;
 	createdAt: string;
 	author: GitHubActor | null;
+	reactions?: CommentReactionSummary;
 };
 
 export type IssueComment = {
 	id: number;
+	/** GraphQL node id (`IC_kwD...`); required for reactions API */
+	graphqlId?: string;
 	body: string;
 	createdAt: string;
 	author: GitHubActor | null;
+	reactions?: CommentReactionSummary;
 };
 
 export type TimelineEvent = {
@@ -167,6 +200,8 @@ export type TimelineEvent = {
 	} | null;
 	milestone?: { title: string } | null;
 	reviewState?: string;
+	/** Issue/PR close: REST `state_reason` (e.g. completed, not_planned) */
+	stateReason?: string;
 	body?: string;
 };
 
@@ -181,6 +216,13 @@ export type GroupedReviewRequestEvent = {
 	actor: GitHubActor | null;
 	requested: (GitHubActor | { login: string })[];
 	removed: (GitHubActor | { login: string })[];
+	createdAt: string;
+};
+
+/** Consecutive reopen/close by the same actor within the grouping window */
+export type GroupedIssueStateToggleEvent = {
+	actor: GitHubActor | null;
+	events: TimelineEvent[];
 	createdAt: string;
 };
 
@@ -437,6 +479,8 @@ export type RepoOverview = {
 	description: string | null;
 	isPrivate: boolean;
 	isFork: boolean;
+	/** Whether the authenticated user has starred this repository */
+	viewerHasStarred: boolean;
 	defaultBranch: string;
 	stars: number;
 	forks: number;
@@ -452,6 +496,10 @@ export type RepoOverview = {
 	openPullCount: number;
 	openIssueCount: number;
 	hasDiscussions: boolean;
+	/** Present when `isFork`; upstream `owner/name` */
+	forkParentFullName: string | null;
+	/** Upstream owner avatar from the same overview query (no extra request) */
+	forkParentOwnerAvatarUrl: string | null;
 	latestCommit: {
 		sha: string;
 		message: string;
