@@ -1,8 +1,8 @@
 diff --git a/dist/highlighter/languages/resolveLanguage.js b/dist/highlighter/languages/resolveLanguage.js
-index f5dff39f418566d009c46b31601d39f7a1e9c19b..eed7279e038551ec2cfd600afbd170510991b243 100644
+index f5dff39f418566d009c46b31601d39f7a1e9c19b..03dc7c8c83f2391694485d1363db7ee89bf5f79a 100644
 --- a/dist/highlighter/languages/resolveLanguage.js
 +++ b/dist/highlighter/languages/resolveLanguage.js
-@@ -1,16 +1,52 @@
+@@ -1,19 +1,89 @@
 -import { RegisteredCustomLanguages, ResolvedLanguages, ResolvingLanguages } from "./constants.js";
  import { isWorkerContext } from "../../utils/isWorkerContext.js";
 -import { bundledLanguages } from "shiki";
@@ -44,6 +44,39 @@ index f5dff39f418566d009c46b31601d39f7a1e9c19b..eed7279e038551ec2cfd600afbd17051
 +	ini: () => import("@shikijs/langs/ini"),
 +};
 +
++/** Map common short ids / aliases to keys in trimmedBundledLanguages (before ini fallback). */
++const LANG_ALIASES = {
++	js: "javascript",
++	mjs: "javascript",
++	cjs: "javascript",
++	ts: "typescript",
++	mts: "typescript",
++	cts: "typescript",
++	py: "python",
++	pyw: "python",
++	rb: "ruby",
++	erb: "ruby",
++	gql: "graphql",
++	md: "markdown",
++	mdx: "markdown",
++	yml: "yaml",
++	eyaml: "yaml",
++	"c++": "cpp",
++	cxx: "cpp",
++	cc: "cpp",
++	hpp: "cpp",
++	hh: "cpp",
++	sh: "shellscript",
++	shell: "shellscript",
++	docker: "dockerfile",
++};
++
++function canonicalLangId(lang) {
++	const mapped = LANG_ALIASES[lang];
++	if (mapped != null) return mapped;
++	return lang;
++}
++
 +const FALLBACK_LANG = "ini";
 +
  async function resolveLanguage(lang) {
@@ -51,14 +84,19 @@ index f5dff39f418566d009c46b31601d39f7a1e9c19b..eed7279e038551ec2cfd600afbd17051
  	const resolver = ResolvingLanguages.get(lang);
  	if (resolver != null) return resolver;
  	try {
++		const id = canonicalLangId(lang);
  		let loader = RegisteredCustomLanguages.get(lang);
 -		if (loader == null && Object.prototype.hasOwnProperty.call(bundledLanguages, lang)) loader = bundledLanguages[lang];
 -		if (loader == null) throw new Error(`resolveLanguage: "${lang}" not found in bundled or custom languages`);
-+		if (loader == null && Object.prototype.hasOwnProperty.call(trimmedBundledLanguages, lang)) loader = trimmedBundledLanguages[lang];
++		if (loader == null && Object.prototype.hasOwnProperty.call(trimmedBundledLanguages, id)) loader = trimmedBundledLanguages[id];
 +		if (loader == null) loader = trimmedBundledLanguages[FALLBACK_LANG];
  		const resolver$1 = loader().then(({ default: data }) => {
  			const resolvedLang = {
- 				name: lang,
+-				name: lang,
++				name: id,
+ 				data
+ 			};
+ 			if (!ResolvedLanguages.has(lang)) ResolvedLanguages.set(lang, resolvedLang);
 diff --git a/dist/highlighter/shared_highlighter.js b/dist/highlighter/shared_highlighter.js
 index ae0e90172df19fddd8ae8bcb7feef9fb92d5c3a6..c817426868f0d6b52cf62ad58b06665779be0a04 100644
 --- a/dist/highlighter/shared_highlighter.js
@@ -139,3 +177,23 @@ index f7de46b0a1611e6b90d8c647f99867ad3388b6ae..c25ee86344ad875414044a86ee7d9dbb
  
  //#region src/utils/createSpanNodeFromToken.ts
  function createSpanFromToken(token) {
+diff --git a/package.json b/package.json
+index e86a735b6fb4cc07048ba30517caced51ec5ec3c..681560dbd5a8d7d1cd93120cd0ef8d84e6343617 100644
+--- a/package.json
++++ b/package.json
+@@ -63,11 +63,13 @@
+   },
+   "dependencies": {
+     "@pierre/theme": "0.0.28",
+-    "@shikijs/transformers": "^3.0.0",
++    "@shikijs/core": "4.0.2",
++    "@shikijs/langs": "4.0.2",
++    "@shikijs/transformers": "^4.0.0",
+     "diff": "8.0.3",
+     "hast-util-to-html": "9.0.5",
+     "lru_map": "0.4.1",
+-    "shiki": "^3.0.0"
++    "shiki": "^4.0.2"
+   },
+   "devDependencies": {
+     "@arethetypeswrong/core": "0.18.2",

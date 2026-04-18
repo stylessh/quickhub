@@ -31,6 +31,9 @@ const FENCE_LANG_ALIASES: Record<string, ShikiBundledLang> = {
 	rb: "ruby",
 	kt: "kotlin",
 	cs: "csharp",
+	yml: "yaml",
+	gql: "graphql",
+	md: "markdown",
 };
 
 // Eagerly start loading the highlighter at module level (client-only to avoid

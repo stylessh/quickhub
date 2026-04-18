@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   '@pierre/diffs@1.1.12':
-    hash: 550aa11e6d89777306d9713e0fd0e671f149bff7bd2649ddbc1e72247244eb7a
+    hash: 1c39efc1f6750a414b433733422874766964595227df55535d1c92a7cc27052f
     path: patches/@pierre__diffs@1.1.12.patch
 
 importers:
@@ -52,7 +52,7 @@ importers:
         version: 0.6.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@pierre/diffs':
         specifier: ^1.1.12
-        version: 1.1.12(patch_hash=550aa11e6d89777306d9713e0fd0e671f149bff7bd2649ddbc1e72247244eb7a)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.1.12(patch_hash=1c39efc1f6750a414b433733422874766964595227df55535d1c92a7cc27052f)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.2.2(vite@7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
@@ -6130,7 +6130,7 @@ snapshots:
 
   '@opentelemetry/semantic-conventions@1.40.0': {}
 
-  '@pierre/diffs@1.1.12(patch_hash=550aa11e6d89777306d9713e0fd0e671f149bff7bd2649ddbc1e72247244eb7a)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@pierre/diffs@1.1.12(patch_hash=1c39efc1f6750a414b433733422874766964595227df55535d1c92a7cc27052f)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@pierre/theme': 0.0.28
       '@shikijs/transformers': 4.0.2
