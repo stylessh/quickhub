@@ -17,7 +17,7 @@ import {
 	useListFilters,
 } from "#/components/filters";
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
-import { RepositoryCard } from "#/components/repo/repository-card";
+import { RepositoryRow } from "#/components/repo/repository-row";
 import { githubUserReposQueryOptions } from "#/lib/github.query";
 import type { UserRepoSummary } from "#/lib/github.types";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
@@ -179,17 +179,25 @@ function RepositoriesPage() {
 					<FilterBar state={filterState} searchPlaceholder="Search by title…" />
 
 					{repos.length === 0 ? (
-						<div className="rounded-xl bg-surface-1 px-4 py-8 text-center text-sm text-muted-foreground">
+						<p className="py-12 text-center text-sm text-muted-foreground">
 							No repositories found.
-						</div>
+						</p>
 					) : filteredRepos.length === 0 ? (
-						<div className="rounded-xl bg-surface-1 px-4 py-8 text-center text-sm text-muted-foreground">
+						<p className="py-12 text-center text-sm text-muted-foreground">
 							No repositories match these filters.
-						</div>
+						</p>
 					) : (
-						<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface-1">
 							{filteredRepos.map((repo) => (
-								<RepositoryCard key={repo.id} repo={repo} />
+								<div
+									key={repo.id}
+									style={{
+										contentVisibility: "auto",
+										containIntrinsicSize: "auto 72px",
+									}}
+								>
+									<RepositoryRow repo={repo} scope={scope} />
+								</div>
 							))}
 						</div>
 					)}

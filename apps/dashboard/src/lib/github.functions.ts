@@ -42,6 +42,7 @@ import type {
 	RepoCollaborator,
 	RepoContributorsResult,
 	RepoOverview,
+	RepoParticipationStats,
 	RepositoryRef,
 	RepoTreeEntry,
 	RequestedTeam,
@@ -390,6 +391,15 @@ type GitHubGraphQLIssuePageResponse = {
 type AuthenticatedUserRepo = Awaited<
 	ReturnType<GitHubClient["rest"]["repos"]["listForAuthenticatedUser"]>
 >["data"][number];
+
+function mapUserRepoVisibility(
+	repo: AuthenticatedUserRepo,
+): "public" | "private" | "internal" {
+	if (repo.visibility === "internal") return "internal";
+	if (repo.visibility === "private" || repo.private) return "private";
+	return "public";
+}
+
 type RepoPullDetail = Awaited<
 	ReturnType<GitHubClient["rest"]["pulls"]["get"]>
 >["data"];
@@ -5140,41 +5150,41 @@ export const getUserRepos = createServerFn({ method: "GET" }).handler(
 		}
 
 		const [repos, accessIndex] = await Promise.all([
-			getCachedPaginatedGitHubRequest<
-				AuthenticatedUserRepo,
-				UserRepoSummary[]
-			>({
-				context,
-				resource: "repos.list",
-				params: { sort: "updated", perPage: 100 },
-				freshForMs: githubCachePolicy.reposList.staleTimeMs,
-				signalKeys: [githubRevalidationSignalKeys.installationAccess],
-				namespaceKeys: ["repos.list"],
-				cacheMode: "split",
-				pageSize: 100,
-				request: (page) =>
-					context.octokit.rest.repos.listForAuthenticatedUser({
-						sort: "updated",
-						per_page: 100,
-						page,
-					}),
-				mapData: (repos) =>
-					repos.map(
-						(repo: AuthenticatedUserRepo): UserRepoSummary => ({
-							id: repo.id,
-							name: repo.name,
-							fullName: repo.full_name,
-							description: repo.description,
-							stars: repo.stargazers_count,
-							language: repo.language,
-							updatedAt: repo.updated_at,
-							createdAt: repo.created_at,
-							isPrivate: repo.private,
-							url: repo.html_url,
-							owner: repo.owner.login,
+			getCachedPaginatedGitHubRequest<AuthenticatedUserRepo, UserRepoSummary[]>(
+				{
+					context,
+					resource: "repos.list",
+					params: { sort: "updated", perPage: 100 },
+					freshForMs: githubCachePolicy.reposList.staleTimeMs,
+					signalKeys: [githubRevalidationSignalKeys.installationAccess],
+					namespaceKeys: ["repos.list"],
+					cacheMode: "split",
+					pageSize: 100,
+					request: (page) =>
+						context.octokit.rest.repos.listForAuthenticatedUser({
+							sort: "updated",
+							per_page: 100,
+							page,
 						}),
-					),
-			}),
+					mapData: (repos) =>
+						repos.map(
+							(repo: AuthenticatedUserRepo): UserRepoSummary => ({
+								id: repo.id,
+								name: repo.name,
+								fullName: repo.full_name,
+								description: repo.description,
+								stars: repo.stargazers_count,
+								language: repo.language,
+								updatedAt: repo.updated_at,
+								createdAt: repo.created_at,
+								isPrivate: repo.private,
+								visibility: mapUserRepoVisibility(repo),
+								url: repo.html_url,
+								owner: repo.owner.login,
+							}),
+						),
+				},
+			),
 			getInstallationAccessIndex(context),
 		]);
 
@@ -7618,6 +7628,90 @@ type RepoOverviewInput = {
 	owner: string;
 	repo: string;
 };
+
+export const getRepoParticipationStats = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<RepoOverviewInput>)
+	.handler(async ({ data }): Promise<RepoParticipationStats> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return { weeklyCommits: [] };
+		}
+
+		const repoMetaKey = githubRevalidationSignalKeys.repoMeta(data);
+		const repoCodeKey = githubRevalidationSignalKeys.repoCode(data);
+
+		return getOrRevalidateGitHubResource<RepoParticipationStats>({
+			userId: context.session.user.id,
+			resource: "repos.participationStats",
+			params: data,
+			freshForMs: githubCachePolicy.repoParticipation.staleTimeMs,
+			signalKeys: [repoMetaKey, repoCodeKey],
+			namespaceKeys: [repoMetaKey, repoCodeKey],
+			cacheMode: "split",
+			fetcher: async (conditionals) => {
+				try {
+					const response =
+						await context.octokit.rest.repos.getParticipationStats({
+							owner: data.owner,
+							repo: data.repo,
+							headers: buildConditionalHeaders(conditionals),
+						});
+
+					const weeklyCommits = Array.isArray(response.data?.all)
+						? response.data.all
+						: [];
+
+					return {
+						kind: "success",
+						data: { weeklyCommits },
+						metadata: createGitHubResponseMetadata(
+							response.status,
+							normalizeResponseHeaders(response.headers),
+						),
+					};
+				} catch (error) {
+					if (
+						error instanceof RequestError &&
+						error.status === 304 &&
+						error.response?.headers
+					) {
+						return {
+							kind: "not-modified",
+							metadata: createGitHubResponseMetadata(
+								304,
+								normalizeResponseHeaders(
+									error.response.headers as Record<string, unknown>,
+								),
+							),
+						};
+					}
+
+					if (error instanceof RequestError) {
+						if (
+							error.status === 404 ||
+							error.status === 403 ||
+							error.status === 202
+						) {
+							return {
+								kind: "success",
+								data: { weeklyCommits: [] },
+								metadata: createGitHubResponseMetadata(
+									error.status,
+									error.response?.headers
+										? normalizeResponseHeaders(
+												error.response.headers as Record<string, unknown>,
+											)
+										: {},
+								),
+							};
+						}
+					}
+
+					throw error;
+				}
+			},
+		});
+	});
 
 export const getRepoOverview = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<RepoOverviewInput>)

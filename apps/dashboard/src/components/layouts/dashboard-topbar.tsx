@@ -109,7 +109,6 @@ export function DashboardTopbar({
 		() => [
 			{ to: "/", label: "Overview", icon: HomeIcon },
 			{ to: "/inbox", label: "Inbox", icon: InboxIcon, dot: hasUnread },
-			{ to: "/repos", label: "Repositories", icon: FolderLibraryIcon },
 			{
 				to: "/pulls",
 				label: "Pull Requests",
@@ -276,6 +275,12 @@ export function DashboardTopbar({
 									<UserCircleIcon size={16} strokeWidth={2} />
 									Profile
 									<DropdownMenuShortcut keys={["G", "U"]} />
+								</Link>
+							</DropdownMenuItem>
+							<DropdownMenuItem asChild>
+								<Link to="/repos">
+									<FolderLibraryIcon size={16} strokeWidth={2} />
+									Repositories
 								</Link>
 							</DropdownMenuItem>
 							<DropdownMenuItem asChild>

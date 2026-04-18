@@ -29,6 +29,7 @@ import {
 	getRepoFileContent,
 	getRepoLabels,
 	getRepoOverview,
+	getRepoParticipationStats,
 	getRepoTree,
 	getReviewThreadStatuses,
 	getTimelineEventPage,
@@ -214,6 +215,10 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string },
 		) => ["github", scope.userId, "repo", "contributors", input] as const,
+		participation: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string },
+		) => ["github", scope.userId, "repo", "participation", input] as const,
 		discussions: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string },
@@ -634,6 +639,19 @@ export function githubRepoBranchesQueryOptions(
 		queryFn: () => getRepoBranches({ data: input }),
 		staleTime: githubCachePolicy.repoMeta.staleTimeMs,
 		gcTime: githubCachePolicy.repoMeta.gcTimeMs,
+		meta: persistedMeta,
+	});
+}
+
+export function githubRepoParticipationQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.participation(scope, input),
+		queryFn: () => getRepoParticipationStats({ data: input }),
+		staleTime: githubCachePolicy.repoParticipation.staleTimeMs,
+		gcTime: githubCachePolicy.repoParticipation.gcTimeMs,
 		meta: persistedMeta,
 	});
 }
