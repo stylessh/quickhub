@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
@@ -6,34 +7,17 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { resolveWranglerConfigPath } from "../../scripts/resolve-wrangler-config-path.mjs";
 import {
 	getSharedWranglerStatePath,
 	isWorktreeCheckout,
 } from "../../scripts/shared-worktree-paths.mjs";
 
 const dashboardRoot = new URL(".", import.meta.url);
-const wranglerDevPath = new URL("./wrangler.dev.jsonc", dashboardRoot);
-const wranglerMainPath = new URL("./wrangler.jsonc", dashboardRoot);
+const dashboardRootDir = fileURLToPath(dashboardRoot);
 const worktreePersistState = isWorktreeCheckout(dashboardRoot)
 	? { persistState: { path: getSharedWranglerStatePath(dashboardRoot) } }
 	: {};
-
-/** Vite dev / Vitest use a dedicated file so local bindings stay out of CI `wrangler.jsonc`. */
-function resolveCloudflareWranglerConfigPath(
-	command: string,
-	mode: string,
-): string | undefined {
-	if (command !== "serve" || mode === "production") {
-		return undefined;
-	}
-	if (existsSync(wranglerDevPath)) {
-		return "wrangler.dev.jsonc";
-	}
-	if (existsSync(wranglerMainPath)) {
-		return "wrangler.jsonc";
-	}
-	return undefined;
-}
 
 function getDevVarFromFile(key: string) {
 	const devVarsPath = new URL("./.dev.vars", dashboardRoot);
@@ -168,7 +152,11 @@ const useCloudflareRemoteBindings =
 	process.env.CI !== "true" && process.env.VITEST !== "true";
 
 const config = defineConfig(({ command, mode }) => {
-	const wranglerConfigPath = resolveCloudflareWranglerConfigPath(command, mode);
+	const wranglerConfigPath = resolveWranglerConfigPath({
+		command,
+		mode,
+		rootDir: dashboardRootDir,
+	});
 	return {
 		server: command === "serve" ? getTunnelServerConfig() : undefined,
 		plugins: [

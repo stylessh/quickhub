@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolveWranglerConfigPath } from "./resolve-wrangler-config-path.mjs";
 import {
   getSharedWranglerStatePath,
   isWorktreeCheckout,
@@ -27,12 +26,11 @@ const args = ["exec", "wrangler"];
 
 let wranglerConfig = process.env.WRANGLER_CONFIG;
 if (!wranglerConfig && mode === "--local") {
-  const cwd = process.cwd();
-  if (existsSync(resolve(cwd, "wrangler.dev.jsonc"))) {
-    wranglerConfig = "wrangler.dev.jsonc";
-  } else if (existsSync(resolve(cwd, "wrangler.jsonc"))) {
-    wranglerConfig = "wrangler.jsonc";
-  }
+  wranglerConfig = resolveWranglerConfigPath({
+    command: "serve",
+    mode: "development",
+    rootDir: process.cwd(),
+  });
 }
 if (wranglerConfig) {
   args.push("-c", wranglerConfig);
