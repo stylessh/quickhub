@@ -1,13 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useCallback } from "react";
 import { SidePanelPortal } from "#/components/layouts/dashboard-side-panel";
 import {
+	type GitHubQueryScope,
 	githubRepoOverviewQueryOptions,
 	githubRepoTreeQueryOptions,
 } from "#/lib/github.query";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { useRegisterTab } from "#/lib/use-register-tab";
+import { BranchComparisonBanner } from "./branch-comparison-banner";
 import { CodeExplorerToolbar } from "./code-explorer-toolbar";
 import { FileTree } from "./file-tree";
 import { LatestCommitBar } from "./latest-commit-bar";
@@ -17,13 +19,19 @@ import { RepoMarkdownFiles } from "./repo-markdown-files";
 import { RepoOverviewSkeleton } from "./repo-overview-skeleton";
 import { RepoSidebar } from "./repo-sidebar";
 
-const routeApi = getRouteApi("/_protected/$owner/$repo/");
-
-export function RepoOverviewPage() {
-	const { user } = routeApi.useRouteContext();
-	const { owner, repo } = routeApi.useParams();
-	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
+export function RepoOverviewPage({
+	owner,
+	repo,
+	scope,
+	currentRef,
+}: {
+	owner: string;
+	repo: string;
+	scope: GitHubQueryScope;
+	currentRef?: string;
+}) {
 	const hasMounted = useHasMounted();
+	const navigate = useNavigate();
 
 	const overviewQuery = useQuery({
 		...githubRepoOverviewQueryOptions(scope, { owner, repo }),
@@ -31,8 +39,26 @@ export function RepoOverviewPage() {
 	});
 
 	const repoData = overviewQuery.data;
-	const [currentRef, setCurrentRef] = useState<string | null>(null);
 	const activeRef = currentRef ?? repoData?.defaultBranch ?? "main";
+	const isDefaultBranch = !repoData || activeRef === repoData.defaultBranch;
+
+	const handleBranchChange = useCallback(
+		(branch: string) => {
+			if (branch === activeRef) return;
+			if (branch === repoData?.defaultBranch) {
+				void navigate({
+					to: "/$owner/$repo",
+					params: { owner, repo },
+				});
+				return;
+			}
+			void navigate({
+				to: "/$owner/$repo/tree/$",
+				params: { owner, repo, _splat: branch },
+			});
+		},
+		[activeRef, navigate, owner, repo, repoData?.defaultBranch],
+	);
 
 	useRegisterTab(
 		repoData
@@ -71,8 +97,18 @@ export function RepoOverviewPage() {
 							repo={repoData}
 							currentRef={activeRef}
 							scope={scope}
-							onBranchChange={setCurrentRef}
+							onBranchChange={handleBranchChange}
 						/>
+
+						{!isDefaultBranch && (
+							<BranchComparisonBanner
+								owner={owner}
+								repo={repo}
+								scope={scope}
+								currentBranch={activeRef}
+								defaultBranch={repoData.defaultBranch}
+							/>
+						)}
 
 						<div>
 							<LatestCommitBar

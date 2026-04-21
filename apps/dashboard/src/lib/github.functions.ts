@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { type Octokit as OctokitType, RequestError } from "octokit";
 import { debug } from "./debug";
 import type {
+	BranchComparison,
 	CommandPaletteSearchResult,
 	CommentReactionContent,
 	CommentReactionSummary,
@@ -7179,6 +7180,99 @@ export type CreateIssueResult =
 	| { ok: true; issueNumber: number }
 	| { ok: false; error: string; installUrl?: string };
 
+export type CreatePullRequestInput = {
+	owner: string;
+	repo: string;
+	title: string;
+	body?: string;
+	base: string;
+	head: string;
+	draft?: boolean;
+	labels?: string[];
+	assignees?: string[];
+	reviewers?: string[];
+	teamReviewers?: string[];
+};
+
+export type CreatePullRequestResult =
+	| { ok: true; pullNumber: number }
+	| { ok: false; error: string; installUrl?: string };
+
+export const createPullRequest = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<CreatePullRequestInput>)
+	.handler(async ({ data }): Promise<CreatePullRequestResult> => {
+		const context = await getGitHubUserContextForRepository(data);
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			const response = await context.octokit.rest.pulls.create({
+				owner: data.owner,
+				repo: data.repo,
+				title: data.title,
+				body: data.body,
+				base: data.base,
+				head: data.head,
+				draft: data.draft ?? false,
+			});
+
+			const pullNumber = response.data.number;
+
+			const followUps: Array<Promise<unknown>> = [];
+			if (data.labels && data.labels.length > 0) {
+				followUps.push(
+					context.octokit.rest.issues.addLabels({
+						owner: data.owner,
+						repo: data.repo,
+						issue_number: pullNumber,
+						labels: data.labels,
+					}),
+				);
+			}
+			if (data.assignees && data.assignees.length > 0) {
+				followUps.push(
+					context.octokit.rest.issues.addAssignees({
+						owner: data.owner,
+						repo: data.repo,
+						issue_number: pullNumber,
+						assignees: data.assignees,
+					}),
+				);
+			}
+			if (
+				(data.reviewers && data.reviewers.length > 0) ||
+				(data.teamReviewers && data.teamReviewers.length > 0)
+			) {
+				followUps.push(
+					context.octokit.rest.pulls.requestReviewers({
+						owner: data.owner,
+						repo: data.repo,
+						pull_number: pullNumber,
+						reviewers: data.reviewers ?? [],
+						team_reviewers: data.teamReviewers ?? [],
+					}),
+				);
+			}
+			if (followUps.length > 0) {
+				await Promise.allSettled(followUps);
+			}
+
+			await bumpGitHubCacheNamespaces([
+				githubRevalidationSignalKeys.pullsMine,
+				githubRevalidationSignalKeys.repoMeta({
+					owner: data.owner,
+					repo: data.repo,
+				}),
+			]);
+
+			return { ok: true, pullNumber };
+		} catch (error) {
+			const result = toMutationError("create pull request", error);
+			return { ok: false, error: result.ok ? "" : result.error };
+		}
+	});
+
 export const createIssue = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<CreateIssueInput>)
 	.handler(async ({ data }): Promise<CreateIssueResult> => {
@@ -8344,6 +8438,120 @@ export const getRepoBranches = createServerFn({ method: "GET" })
 					isProtected: b.protected,
 				})),
 		});
+	});
+
+// ---------------------------------------------------------------------------
+// Branch comparison (ahead/behind vs base branch)
+// ---------------------------------------------------------------------------
+
+type BranchComparisonInput = {
+	owner: string;
+	repo: string;
+	base: string;
+	head: string;
+};
+
+export const getBranchComparison = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<BranchComparisonInput>)
+	.handler(async ({ data }): Promise<BranchComparison | null> => {
+		if (data.base === data.head) return null;
+		const context = await getGitHubContextForRepository(data);
+		if (!context) return null;
+
+		return getCachedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["repos"]["compareCommitsWithBasehead"]>
+			>["data"],
+			BranchComparison
+		>({
+			context,
+			resource: "repo.branchComparison.v1",
+			params: data,
+			freshForMs: githubCachePolicy.detail.staleTimeMs,
+			signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			cacheMode: "split",
+			request: (headers) =>
+				context.octokit.rest.repos.compareCommitsWithBasehead({
+					owner: data.owner,
+					repo: data.repo,
+					basehead: `${data.base}...${data.head}`,
+					per_page: 1,
+					headers,
+				}),
+			mapData: (comparison) => ({
+				aheadBy: comparison.ahead_by,
+				behindBy: comparison.behind_by,
+				status: comparison.status as BranchComparison["status"],
+				totalCommits: comparison.total_commits,
+			}),
+		}).catch(() => null);
+	});
+
+// ---------------------------------------------------------------------------
+// Compare detail (commits + files between two refs, for the compare page)
+// ---------------------------------------------------------------------------
+
+export type CompareDetail = {
+	aheadBy: number;
+	behindBy: number;
+	status: "ahead" | "behind" | "diverged" | "identical";
+	totalCommits: number;
+	commits: PullCommit[];
+	files: PullFile[];
+};
+
+export const getCompareDetail = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<BranchComparisonInput>)
+	.handler(async ({ data }): Promise<CompareDetail | null> => {
+		if (data.base === data.head) return null;
+		const context = await getGitHubContextForRepository(data);
+		if (!context) return null;
+
+		return getCachedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["repos"]["compareCommitsWithBasehead"]>
+			>["data"],
+			CompareDetail
+		>({
+			context,
+			resource: "repo.compareDetail.v1",
+			params: data,
+			freshForMs: githubCachePolicy.detail.staleTimeMs,
+			signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
+			cacheMode: "split",
+			request: (headers) =>
+				context.octokit.rest.repos.compareCommitsWithBasehead({
+					owner: data.owner,
+					repo: data.repo,
+					basehead: `${data.base}...${data.head}`,
+					per_page: 100,
+					headers,
+				}),
+			mapData: (comparison) => ({
+				aheadBy: comparison.ahead_by,
+				behindBy: comparison.behind_by,
+				status: comparison.status as CompareDetail["status"],
+				totalCommits: comparison.total_commits,
+				commits: comparison.commits.map((c) => ({
+					sha: c.sha,
+					message: c.commit.message,
+					createdAt: c.commit.committer?.date ?? c.commit.author?.date ?? "",
+					author: mapActor(c.author),
+				})),
+				files: (comparison.files ?? []).map((f) => ({
+					sha: f.sha ?? null,
+					filename: f.filename,
+					status: f.status as PullFile["status"],
+					additions: f.additions,
+					deletions: f.deletions,
+					changes: f.changes,
+					patch: f.patch ?? null,
+					previousFilename: f.previous_filename ?? null,
+				})),
+			}),
+		}).catch(() => null);
 	});
 
 // ---------------------------------------------------------------------------

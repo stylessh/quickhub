@@ -37,6 +37,7 @@ export {
   FolderLibraryIcon,
   GitBranchIcon,
   GitCommitIcon,
+  GitCompareIcon,
   GitForkIcon,
   GitMergeIcon,
   GitPullRequestClosedIcon,

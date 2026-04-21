@@ -1,5 +1,10 @@
 import { FileIcon, GitCommitIcon, ReviewsIcon } from "@diffkit/icons";
 import {
+	Callout,
+	CalloutAction,
+	CalloutContent,
+} from "@diffkit/ui/components/callout";
+import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
@@ -88,19 +93,21 @@ export function PullDetailHeader({
 
 			<div className="flex flex-col gap-2">
 				{isReviewRequested && (
-					<div className="flex items-center justify-between rounded-lg bg-yellow-500/15 px-4 py-2.5">
-						<span className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
+					<Callout variant="warning">
+						<CalloutContent>
 							<ReviewsIcon size={15} strokeWidth={2} />
 							Your review has been requested
-						</span>
-						<Link
-							to="/$owner/$repo/review/$pullId"
-							params={{ owner, repo, pullId }}
-							className="rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 dark:bg-yellow-500 dark:text-black"
-						>
-							Review changes
-						</Link>
-					</div>
+						</CalloutContent>
+						<CalloutAction>
+							<Link
+								to="/$owner/$repo/review/$pullId"
+								params={{ owner, repo, pullId }}
+								className="rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 dark:bg-yellow-500 dark:text-black"
+							>
+								Review changes
+							</Link>
+						</CalloutAction>
+					</Callout>
 				)}
 
 				<div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-surface-1 px-4 py-2.5 text-sm text-muted-foreground">

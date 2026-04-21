@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { RepoOverviewPage } from "#/components/repo/repo-overview-page";
 import type { GitHubQueryScope } from "#/lib/github.query";
 import {
@@ -99,5 +100,12 @@ export const Route = createFileRoute("/_protected/$owner/$repo/")({
 			description: `Repository overview for ${params.owner}/${params.repo}.`,
 			robots: "noindex",
 		}),
-	component: RepoOverviewPage,
+	component: RepoOverviewRoute,
 });
+
+function RepoOverviewRoute() {
+	const { user } = Route.useRouteContext();
+	const { owner, repo } = Route.useParams();
+	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
+	return <RepoOverviewPage owner={owner} repo={repo} scope={scope} />;
+}

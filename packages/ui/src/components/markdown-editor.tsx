@@ -408,7 +408,8 @@ export const MarkdownEditor = forwardRef<
 
 	const rootProps = mediaUpload?.rootProps;
 	const rootClassName = cn(
-		"flex flex-col rounded-lg border bg-surface-0 overflow-hidden",
+		"flex flex-col rounded-lg border bg-surface-0 overflow-hidden transition-[box-shadow,border-color]",
+		"has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-[3px] has-[textarea:focus-visible]:ring-ring/50",
 		mediaUpload?.isDragActive && "ring-2 ring-primary/45 ring-inset",
 		rootProps?.className,
 	);
@@ -430,7 +431,10 @@ export const MarkdownEditor = forwardRef<
 				<div className="flex items-center gap-0.5">
 					<button
 						type="button"
-						onClick={() => setTab("write")}
+						onClick={() => {
+							setTab("write");
+							requestAnimationFrame(() => editorRef.current?.focus());
+						}}
 						className={cn(
 							"rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
 							tab === "write"
@@ -701,6 +705,9 @@ function MdToolbarButton({
 			<TooltipTrigger asChild>
 				<button
 					type="button"
+					// Preserve textarea focus when the toolbar is clicked so the
+					// focus ring on the editor root doesn't flicker.
+					onMouseDown={(e) => e.preventDefault()}
 					onClick={onClick}
 					className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-surface-1 hover:text-foreground"
 				>

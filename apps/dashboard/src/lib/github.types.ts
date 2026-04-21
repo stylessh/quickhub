@@ -567,6 +567,13 @@ export type RepoBranch = {
 	isProtected: boolean;
 };
 
+export type BranchComparison = {
+	aheadBy: number;
+	behindBy: number;
+	status: "ahead" | "behind" | "diverged" | "identical";
+	totalCommits: number;
+};
+
 export type RepoContributor = {
 	login: string;
 	avatarUrl: string;

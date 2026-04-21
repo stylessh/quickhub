@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { RepoExplorerLayout } from "#/components/repo/repo-explorer-layout";
+import { RepoOverviewPage } from "#/components/repo/repo-overview-page";
 import {
 	githubRepoBranchesQueryOptions,
 	githubRepoOverviewQueryOptions,
@@ -88,6 +89,17 @@ function TreePage() {
 	const { owner, repo } = Route.useParams();
 	const { ref, path } = Route.useLoaderData();
 	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
+
+	if (path === "") {
+		return (
+			<RepoOverviewPage
+				owner={owner}
+				repo={repo}
+				scope={scope}
+				currentRef={ref}
+			/>
+		);
+	}
 
 	return (
 		<RepoExplorerLayout

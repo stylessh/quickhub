@@ -1,7 +1,9 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import {
 	type CommandPaletteSearchInput,
+	getBranchComparison,
 	getCommentPage,
+	getCompareDetail,
 	getFileLastCommit,
 	getGitHubViewer,
 	getIssueComments,
@@ -204,6 +206,14 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string },
 		) => ["github", scope.userId, "repo", "branches", input] as const,
+		branchComparison: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string; base: string; head: string },
+		) => ["github", scope.userId, "repo", "branchComparison", input] as const,
+		compareDetail: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string; base: string; head: string },
+		) => ["github", scope.userId, "repo", "compareDetail", input] as const,
 		tree: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; path: string },
@@ -686,6 +696,32 @@ export function githubRepoBranchesQueryOptions(
 		staleTime: githubCachePolicy.repoMeta.staleTimeMs,
 		gcTime: githubCachePolicy.repoMeta.gcTimeMs,
 		meta: persistedMeta,
+	});
+}
+
+export function githubBranchComparisonQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string; base: string; head: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.branchComparison(scope, input),
+		queryFn: () => getBranchComparison({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubCompareDetailQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string; base: string; head: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.compareDetail(scope, input),
+		queryFn: () => getCompareDetail({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
 	});
 }
 

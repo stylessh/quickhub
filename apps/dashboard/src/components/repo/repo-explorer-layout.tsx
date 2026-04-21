@@ -28,6 +28,7 @@ import {
 import type { RepoOverview } from "#/lib/github.types";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { useRegisterTab } from "#/lib/use-register-tab";
+import { BranchComparisonBanner } from "./branch-comparison-banner";
 import { CodeExplorerToolbar } from "./code-explorer-toolbar";
 import { CodeFileView } from "./code-file-view";
 import { FolderView, FolderViewSkeleton } from "./folder-view";
@@ -211,6 +212,18 @@ export function RepoExplorerLayout({
 				onOpenFileSheet={handleOpenFileSheet}
 				isDesktop={isDesktop}
 			/>
+
+			{activeRef !== repoData.defaultBranch && (
+				<div className="shrink-0 border-b bg-surface-0 px-3 py-2 md:px-4">
+					<BranchComparisonBanner
+						owner={owner}
+						repo={repoName}
+						scope={scope}
+						currentBranch={activeRef}
+						defaultBranch={repoData.defaultBranch}
+					/>
+				</div>
+			)}
 
 			{isDesktop ? (
 				<ResizablePanelGroup direction="horizontal" className="flex-1">
