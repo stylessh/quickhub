@@ -759,6 +759,7 @@ function ChecksSection({
 	const [open, setOpen] = useState(true);
 	const [isRerunning, setIsRerunning] = useState(false);
 	const queryClient = useQueryClient();
+	const prefersNoHover = usePrefersNoHover();
 
 	const checkStatus: StatusType = allChecksPassed
 		? "success"
@@ -890,7 +891,13 @@ function ChecksSection({
 										href={run.htmlUrl}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/run:opacity-100"
+										aria-label={`Open ${run.name} on GitHub`}
+										className={cn(
+											"shrink-0 text-muted-foreground transition-opacity hover:text-foreground",
+											prefersNoHover
+												? "opacity-100"
+												: "opacity-0 group-hover/run:opacity-100 focus-visible:opacity-100",
+										)}
 									>
 										<ExternalLinkIcon size={12} strokeWidth={2} />
 									</a>

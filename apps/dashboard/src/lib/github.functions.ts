@@ -3764,7 +3764,7 @@ async function computePullStatus(
 			passed += 1;
 		} else if (check.conclusion === "skipped") {
 			skipped += 1;
-		} else {
+		} else if (isFailedCheckRun(check)) {
 			failed += 1;
 		}
 	}
@@ -6085,15 +6085,24 @@ export const rerunChecks = createServerFn({ method: "POST" })
 				pull_number: data.pullNumber,
 			});
 
-			// List check runs for the head SHA
-			const checksResponse = await context.octokit.rest.checks.listForRef({
-				owner: data.owner,
-				repo: data.repo,
-				ref: pr.data.head.sha,
-				per_page: 100,
+			// List all check runs for the head SHA (paginated)
+			type CheckRunItem = Awaited<
+				ReturnType<GitHubClient["rest"]["checks"]["listForRef"]>
+			>["data"]["check_runs"][number];
+			const checkRuns = await listPaginatedGitHubItems<CheckRunItem>({
+				label: `rerun checks ${data.owner}/${data.repo}#${data.pullNumber}`,
+				request: (page) =>
+					context.octokit.rest.checks.listForRef({
+						owner: data.owner,
+						repo: data.repo,
+						ref: pr.data.head.sha,
+						page,
+						per_page: 100,
+					}),
+				getItems: (payload) =>
+					((payload as { check_runs?: CheckRunItem[] }).check_runs ??
+						[]) as CheckRunItem[],
 			});
-
-			const checkRuns = checksResponse.data.check_runs ?? [];
 
 			// Deduplicate: keep the latest run per check name
 			const dedupedRuns = deduplicateCheckRuns(checkRuns);

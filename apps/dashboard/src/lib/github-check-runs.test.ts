@@ -123,7 +123,7 @@ describe("isFailedCheckRun", () => {
 		).toBe(false);
 	});
 
-	it("returns false for null conclusion (still running)", () => {
+	it("returns false for null conclusion (completed)", () => {
 		expect(
 			isFailedCheckRun({
 				id: 1,
