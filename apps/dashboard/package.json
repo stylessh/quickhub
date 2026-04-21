@@ -34,6 +34,7 @@
 		"@tanstack/react-router-devtools": "~1.166.11",
 		"@tanstack/react-router-ssr-query": "~1.166.10",
 		"@tanstack/react-start": "~1.167.23",
+		"@tanstack/react-virtual": "^3.13.24",
 		"@tanstack/router-plugin": "~1.167.12",
 		"agentation": "^3.0.2",
 		"better-auth": "^1.6.0",

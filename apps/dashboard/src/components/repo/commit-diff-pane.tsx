@@ -7,6 +7,7 @@ import {
 	useEffect,
 	useImperativeHandle,
 	useMemo,
+	useReducer,
 	useRef,
 	useState,
 } from "react";
@@ -25,6 +26,12 @@ const EMPTY_ANNOTATIONS: DiffLineAnnotation<PullReviewComment>[] = [];
 const EMPTY_PENDING_COMMENTS: PendingComment[] = [];
 const EMPTY_REPLIES = new Map<number, PullReviewComment[]>();
 const NOOP_COMMENT_FORM: ActiveCommentForm | null = null;
+// Hoist noop callbacks to module scope so their identity is stable across
+// renders. Inline arrow props bust ReviewFileDiffBlock's memo on every render.
+const noopStartComment = (_filename: string, _range: SelectedLineRange) => {};
+const noopCancel = () => {};
+const noopAdd = (_comment: PendingComment) => {};
+const noopEdit = (_original: PendingComment, _newBody: string) => {};
 
 export type CommitDiffPaneHandle = {
 	scrollToFile: (filename: string) => void;
@@ -176,19 +183,51 @@ export const CommitDiffPane = memo(
 			[files, visibleCount],
 		);
 
+		// Same observer-stability pattern as ReviewDiffPane: observers live in
+		// refs so they survive state updates; otherwise listing the state they
+		// write in the effect's deps tears them down on every scroll tick and
+		// opens a race where files that scroll into view are never re-observed.
+		const nearViewportRef = useRef<Set<string>>(new Set());
+		const [, bumpNearViewport] = useReducer((n: number) => n + 1, 0);
+		const nearViewportObserverRef = useRef<IntersectionObserver | null>(null);
+		const activeFileObserverRef = useRef<IntersectionObserver | null>(null);
+		const onActiveFileChangeRef = useRef(onActiveFileChange);
+
+		useEffect(() => {
+			onActiveFileChangeRef.current = onActiveFileChange;
+		}, [onActiveFileChange]);
+
 		useEffect(() => {
 			const panel = diffPanelRef.current;
-			if (!panel || visibleFiles.length === 0) return;
+			if (!panel) return;
 
-			const observer = new IntersectionObserver(
+			const nearObserver = new IntersectionObserver(
+				(entries) => {
+					let changed = false;
+					for (const entry of entries) {
+						if (!entry.isIntersecting) continue;
+						const filename = entry.target.getAttribute("data-filename");
+						if (filename && !nearViewportRef.current.has(filename)) {
+							nearViewportRef.current.add(filename);
+							nearObserver.unobserve(entry.target);
+							changed = true;
+						}
+					}
+					if (changed) bumpNearViewport();
+				},
+				{
+					root: panel,
+					rootMargin: "1500px 0px",
+					threshold: 0,
+				},
+			);
+
+			const activeObserver = new IntersectionObserver(
 				(entries) => {
 					for (const entry of entries) {
 						if (!entry.isIntersecting) continue;
-
 						const filename = entry.target.getAttribute("data-filename");
-						if (filename) {
-							onActiveFileChange(filename);
-						}
+						if (filename) onActiveFileChangeRef.current(filename);
 					}
 				},
 				{
@@ -198,63 +237,41 @@ export const CommitDiffPane = memo(
 				},
 			);
 
-			for (const file of visibleFiles) {
-				const element = document.getElementById(encodeFileId(file.filename));
-				if (element) observer.observe(element);
-			}
+			nearViewportObserverRef.current = nearObserver;
+			activeFileObserverRef.current = activeObserver;
 
-			return () => observer.disconnect();
-		}, [onActiveFileChange, visibleFiles]);
-
-		const [nearViewportFiles, setNearViewportFiles] = useState<Set<string>>(
-			() => new Set(),
-		);
-
-		useEffect(() => {
-			if (visibleFiles.length === 0 || nearViewportFiles.size > 0) return;
-			setNearViewportFiles(
-				new Set(visibleFiles.slice(0, 4).map((f) => f.filename)),
-			);
-		}, [visibleFiles, nearViewportFiles.size]);
+			return () => {
+				nearObserver.disconnect();
+				activeObserver.disconnect();
+				nearViewportObserverRef.current = null;
+				activeFileObserverRef.current = null;
+			};
+		}, []);
 
 		useEffect(() => {
-			const panel = diffPanelRef.current;
-			if (!panel || visibleFiles.length === 0) return;
+			if (visibleFiles.length === 0 || nearViewportRef.current.size > 0) {
+				return;
+			}
+			for (const file of visibleFiles.slice(0, 4)) {
+				nearViewportRef.current.add(file.filename);
+			}
+			bumpNearViewport();
+		}, [visibleFiles]);
 
-			const observer = new IntersectionObserver(
-				(entries) => {
-					const newlyVisible: string[] = [];
-					for (const entry of entries) {
-						if (!entry.isIntersecting) continue;
-						const filename = entry.target.getAttribute("data-filename");
-						if (filename) {
-							newlyVisible.push(filename);
-							observer.unobserve(entry.target);
-						}
-					}
-					if (newlyVisible.length > 0) {
-						setNearViewportFiles((prev) => {
-							const next = new Set(prev);
-							for (const f of newlyVisible) next.add(f);
-							return next;
-						});
-					}
-				},
-				{
-					root: panel,
-					rootMargin: "1500px 0px",
-					threshold: 0,
-				},
-			);
+		useEffect(() => {
+			const nearObserver = nearViewportObserverRef.current;
+			const activeObserver = activeFileObserverRef.current;
+			if (!nearObserver || !activeObserver) return;
 
 			for (const file of visibleFiles) {
-				if (nearViewportFiles.has(file.filename)) continue;
 				const element = document.getElementById(encodeFileId(file.filename));
-				if (element) observer.observe(element);
+				if (!element) continue;
+				activeObserver.observe(element);
+				if (!nearViewportRef.current.has(file.filename)) {
+					nearObserver.observe(element);
+				}
 			}
-
-			return () => observer.disconnect();
-		}, [visibleFiles, nearViewportFiles]);
+		}, [visibleFiles]);
 
 		if (files.length === 0) {
 			return (
@@ -263,14 +280,6 @@ export const CommitDiffPane = memo(
 				</div>
 			);
 		}
-
-		const noopStartComment = (
-			_filename: string,
-			_range: SelectedLineRange,
-		) => {};
-		const noopCancel = () => {};
-		const noopAdd = (_comment: PendingComment) => {};
-		const noopEdit = (_original: PendingComment, _newBody: string) => {};
 
 		return (
 			<div ref={diffPanelRef} className="h-full overflow-auto">
@@ -282,7 +291,7 @@ export const CommitDiffPane = memo(
 							id={encodeFileId(file.filename)}
 							file={file}
 							diffStyle={diffStyle}
-							isNearViewport={nearViewportFiles.has(file.filename)}
+							isNearViewport={nearViewportRef.current.has(file.filename)}
 							annotations={EMPTY_ANNOTATIONS}
 							repliesByCommentId={EMPTY_REPLIES}
 							owner=""

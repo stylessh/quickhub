@@ -430,9 +430,12 @@ export function githubPullFileSummariesQueryOptions(
 	scope: GitHubQueryScope,
 	input: PullFromRepoQueryInput,
 ) {
-	return queryOptions({
+	return infiniteQueryOptions({
 		queryKey: githubQueryKeys.pulls.fileSummaries(scope, input),
-		queryFn: () => getPullFileSummaries({ data: input }),
+		queryFn: ({ pageParam }) =>
+			getPullFileSummaries({ data: { ...input, cursor: pageParam } }),
+		initialPageParam: null as string | null,
+		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 		staleTime: githubCachePolicy.detail.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		meta: tabPersistedMeta,

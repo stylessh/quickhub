@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_protected/$owner/$repo/review/$pullId")(
 			// Never block navigation — fire prefetches and let the component
 			// show cached data instantly or a skeleton while loading.
 			void context.queryClient.prefetchQuery(pageOptions);
-			void context.queryClient.prefetchQuery(fileSummariesOptions);
+			void context.queryClient.prefetchInfiniteQuery(fileSummariesOptions);
 
 			// Prefetch first page of files if not cached
 			const filesQueryKey = githubQueryKeys.pulls.files(scope, input);

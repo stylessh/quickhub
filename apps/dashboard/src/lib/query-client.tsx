@@ -60,6 +60,18 @@ function isRepoQueryKeyInput(
 	);
 }
 
+function isRepoCommitQueryKeyInput(
+	value: unknown,
+): value is { owner: string; repo: string; sha: string } {
+	return Boolean(
+		value &&
+			typeof value === "object" &&
+			typeof (value as { owner?: unknown }).owner === "string" &&
+			typeof (value as { repo?: unknown }).repo === "string" &&
+			typeof (value as { sha?: unknown }).sha === "string",
+	);
+}
+
 function matchesTabQuery(queryKey: readonly unknown[], tab: Tab) {
 	const resourceType = queryKey[2];
 	const resourceName = queryKey[3];
@@ -78,6 +90,40 @@ function matchesTabQuery(queryKey: readonly unknown[], tab: Tab) {
 			input.repo === repo &&
 			input.pullNumber === tab.number
 		);
+	}
+
+	if (tab.type === "review") {
+		// Persist everything needed to rehydrate the review workspace instantly
+		// (toolbar PR header, sidebar tree, review threads, comments). Patches
+		// (`files`) are deliberately excluded — for a 3k-file PR they'd exceed
+		// localStorage quota and serializing them on every cache write would be
+		// expensive. Patches fall back to the server-side KV cache instead.
+		return (
+			resourceType === "pulls" &&
+			(resourceName === "page" ||
+				resourceName === "fileSummaries" ||
+				resourceName === "reviewComments" ||
+				resourceName === "reviewThreads") &&
+			isPullQueryKeyInput(input) &&
+			input.owner === owner &&
+			input.repo === repo &&
+			input.pullNumber === tab.number
+		);
+	}
+
+	if (tab.type === "commit") {
+		if (
+			resourceType !== "repo" ||
+			resourceName !== "commit" ||
+			!isRepoCommitQueryKeyInput(input) ||
+			input.owner !== owner ||
+			input.repo !== repo
+		) {
+			return false;
+		}
+		// Commit tabs aren't keyed by a number — extract sha from the tab URL.
+		const shaMatch = tab.url.match(/\/commit\/([0-9a-f]+)/i);
+		return shaMatch ? input.sha === shaMatch[1] : false;
 	}
 
 	if (tab.type === "repo") {

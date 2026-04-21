@@ -7,6 +7,7 @@ import {
 import { toast } from "@diffkit/ui/components/sonner";
 import { Spinner } from "@diffkit/ui/components/spinner";
 import { quickhubDark, quickhubLight } from "@diffkit/ui/lib/diffs-themes";
+import { shikiBundledLangSet } from "@diffkit/ui/lib/shiki-bundle";
 import { cn } from "@diffkit/ui/lib/utils";
 import type { SelectedLineRange } from "@pierre/diffs";
 import type { DiffLineAnnotation, PatchDiffProps } from "@pierre/diffs/react";
@@ -46,7 +47,7 @@ const DIFF_LINE_HEIGHT = 20;
 const DIFF_HUNK_SEPARATOR_HEIGHT = 28;
 
 function estimateDiffHeight(
-	patch: string | undefined,
+	patch: string | null | undefined,
 	diffStyle: "unified" | "split",
 ): number {
 	if (!patch) return 0;
@@ -59,24 +60,54 @@ function estimateDiffHeight(
 	);
 }
 
-const PatchDiff: LazyExoticComponent<ReviewPatchDiffComponent> = lazy(() =>
-	import.meta.env.SSR
-		? Promise.resolve({
-				default: (() => null) as ReviewPatchDiffComponent,
-			})
-		: import("@pierre/diffs/react").then((mod) => ({
-				default: mod.PatchDiff as ReviewPatchDiffComponent,
-			})),
-);
+// Kick off both Pierre chunks as soon as this module evaluates (i.e. when
+// ReviewDiffPane loads) so the JS is already parsed by the time the first
+// file block enters the viewport — no per-Suspense waterfall.
+const patchDiffModulePromise: Promise<{
+	default: ReviewPatchDiffComponent;
+}> = import.meta.env.SSR
+	? Promise.resolve({ default: (() => null) as ReviewPatchDiffComponent })
+	: import("@pierre/diffs/react").then((mod) => ({
+			default: mod.PatchDiff as ReviewPatchDiffComponent,
+		}));
 
-let themesRegistered = false;
-if (!import.meta.env.SSR && !themesRegistered) {
-	themesRegistered = true;
-	import("@pierre/diffs").then(({ registerCustomTheme }) => {
-		registerCustomTheme("quickhub-light", () => Promise.resolve(quickhubLight));
-		registerCustomTheme("quickhub-dark", () => Promise.resolve(quickhubDark));
-	});
-}
+const pierreInitPromise: Promise<void> = import.meta.env.SSR
+	? Promise.resolve()
+	: import("@pierre/diffs").then(
+			({
+				registerCustomTheme,
+				EXTENSION_TO_FILE_FORMAT,
+				extendFileFormatMap,
+			}) => {
+				registerCustomTheme("quickhub-light", () =>
+					Promise.resolve(quickhubLight),
+				);
+				registerCustomTheme("quickhub-dark", () =>
+					Promise.resolve(quickhubDark),
+				);
+
+				// Pierre's default map sends some extensions to grammars we deliberately
+				// excluded from our Shiki bundle (e.g. `.h` → `objective-cpp`). Shiki
+				// then throws "Language ... not found". Walk the default map and
+				// redirect any unsupported mapping to `text` so those diffs render
+				// without highlighting instead of failing.
+				const overrides: Record<string, "text"> = {};
+				for (const [ext, lang] of Object.entries(EXTENSION_TO_FILE_FORMAT)) {
+					if (!lang) continue;
+					if (lang === "text" || lang === "ansi") continue;
+					if (shikiBundledLangSet.has(lang)) continue;
+					overrides[ext] = "text";
+				}
+				if (Object.keys(overrides).length > 0) {
+					extendFileFormatMap(overrides);
+				}
+			},
+		);
+// Gate PatchDiff's Suspense resolution on pierreInit so the extension-map
+// override is always in place before the first file's grammar is looked up.
+const PatchDiff: LazyExoticComponent<ReviewPatchDiffComponent> = lazy(() =>
+	Promise.all([patchDiffModulePromise, pierreInitPromise]).then(([mod]) => mod),
+);
 
 export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	id,
@@ -127,6 +158,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	const [isCollapsed, setIsCollapsed] = useState(false);
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme === "dark";
+
 	const handleGutterUtilityClick = useCallback(
 		(range: SelectedLineRange) => onGutterClick(file.filename, range),
 		[file.filename, onGutterClick],
@@ -169,6 +201,19 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 		file.changes <= LARGE_PATCH_CHANGE_THRESHOLD &&
 		(file.patch?.length ?? 0) <= LARGE_PATCH_CHAR_THRESHOLD;
 
+	const unsafeCSS = useMemo(
+		() =>
+			[
+				`:host { color-scheme: ${isDark ? "dark" : "light"}; }`,
+				`:host { --diffs-font-family: 'Geist Mono Variable', 'SF Mono', ui-monospace, 'Cascadia Code', monospace; }`,
+				`[data-line-annotation] { font-family: 'Inter Variable', 'Inter', 'Avenir Next', ui-sans-serif, system-ui, sans-serif; }`,
+				`[data-line-annotation] code { font-family: var(--diffs-font-family, var(--diffs-font-fallback)); }`,
+				`[data-annotation-content] { background-color: transparent; }`,
+				`[data-diff] { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 4px 4px; overflow: hidden; }`,
+			].join("\n"),
+		[isDark],
+	);
+
 	const diffOptions = useMemo(
 		() => ({
 			diffStyle,
@@ -184,18 +229,96 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 			enableGutterUtility: !readOnly,
 			enableLineSelection: !readOnly,
 			...(readOnly ? {} : { onGutterUtilityClick: handleGutterUtilityClick }),
-			unsafeCSS: [
-				`:host { color-scheme: ${isDark ? "dark" : "light"}; }`,
-				`:host { --diffs-font-family: 'Geist Mono Variable', 'SF Mono', ui-monospace, 'Cascadia Code', monospace; }`,
-				`[data-line-annotation] { font-family: 'Inter Variable', 'Inter', 'Avenir Next', ui-sans-serif, system-ui, sans-serif; }`,
-				`[data-line-annotation] code { font-family: var(--diffs-font-family, var(--diffs-font-fallback)); }`,
-				`[data-annotation-content] { background-color: transparent; }`,
-				`[data-diff] { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 4px 4px; overflow: hidden; }`,
-			].join("\n"),
+			unsafeCSS,
 		}),
-		[diffStyle, handleGutterUtilityClick, isDark, readOnly, useWordDiff],
+		[diffStyle, handleGutterUtilityClick, readOnly, unsafeCSS, useWordDiff],
 	);
 	const patchString = useMemo(() => buildPatchString(file), [file]);
+	const placeholderHeight = useMemo(
+		() => estimateDiffHeight(file.patch, diffStyle),
+		[file.patch, diffStyle],
+	);
+
+	const toggleCollapse = useCallback(() => setIsCollapsed((prev) => !prev), []);
+
+	const renderAnnotation = useCallback(
+		(annotation: DiffLineAnnotation<ReviewAnnotation>) => {
+			if (readOnly) return null;
+
+			const data = annotation.metadata as
+				| PendingComment
+				| PullReviewComment
+				| null;
+			if (!data) return null;
+
+			if ("body" in data && data.body === "__FORM__") {
+				const formData = data as PendingComment;
+				return (
+					<InlineCommentForm
+						isMultiLine={
+							formData.startLine != null && formData.startLine !== formData.line
+						}
+						startLine={formData.startLine}
+						endLine={formData.line}
+						onSubmit={(body) =>
+							onAddComment({
+								path: file.filename,
+								line: formData.line,
+								startLine: formData.startLine,
+								side: formData.side,
+								startSide: formData.startSide,
+								body,
+							})
+						}
+						onCancel={onCancelComment}
+						mentionConfig={mentionConfig}
+					/>
+				);
+			}
+
+			if ("body" in data && !("id" in data)) {
+				return (
+					<PendingCommentBubble
+						comment={data as PendingComment}
+						onEdit={onEditComment}
+						mentionConfig={mentionConfig}
+					/>
+				);
+			}
+
+			if ("id" in data) {
+				const c = data as PullReviewComment;
+				const replies = repliesByCommentId.get(c.id);
+				return (
+					<ReviewCommentThread
+						comment={c}
+						replies={replies}
+						owner={owner}
+						repo={repo}
+						pullNumber={pullNumber}
+						viewerLogin={viewerLogin}
+						threadInfo={threadInfoByCommentId?.get(c.id)}
+					/>
+				);
+			}
+
+			return null;
+		},
+		[
+			file.filename,
+			mentionConfig,
+			onAddComment,
+			onCancelComment,
+			onEditComment,
+			owner,
+			pullNumber,
+			readOnly,
+			repliesByCommentId,
+			repo,
+			threadInfoByCommentId,
+			viewerLogin,
+		],
+	);
 
 	if (!file.patch) {
 		return (
@@ -203,7 +326,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 				<FileHeader
 					file={file}
 					isCollapsed={isCollapsed}
-					onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+					onToggleCollapse={toggleCollapse}
 				/>
 				{!isCollapsed && (
 					<div className="px-2 pb-2">
@@ -221,89 +344,20 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 			<FileHeader
 				file={file}
 				isCollapsed={isCollapsed}
-				onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+				onToggleCollapse={toggleCollapse}
 			/>
 			{!isCollapsed && !isNearViewport && (
-				<div
-					className="px-2 pb-2"
-					style={{
-						height: estimateDiffHeight(file.patch, diffStyle),
-					}}
-				/>
+				<div className="px-2 pb-2" style={{ height: placeholderHeight }} />
 			)}
 			{!isCollapsed && isNearViewport && (
 				<div className="px-2 pb-2">
-					<Suspense>
+					<Suspense fallback={<div style={{ height: placeholderHeight }} />}>
 						<PatchDiff
 							patch={patchString}
 							options={diffOptions}
 							selectedLines={selectedLines}
 							lineAnnotations={allAnnotations}
-							renderAnnotation={(
-								annotation: DiffLineAnnotation<ReviewAnnotation>,
-							) => {
-								if (readOnly) return null;
-
-								const data = annotation.metadata as
-									| PendingComment
-									| PullReviewComment
-									| null;
-								if (!data) return null;
-
-								if ("body" in data && data.body === "__FORM__") {
-									const formData = data as PendingComment;
-									return (
-										<InlineCommentForm
-											isMultiLine={
-												formData.startLine != null &&
-												formData.startLine !== formData.line
-											}
-											startLine={formData.startLine}
-											endLine={formData.line}
-											onSubmit={(body) =>
-												onAddComment({
-													path: file.filename,
-													line: formData.line,
-													startLine: formData.startLine,
-													side: formData.side,
-													startSide: formData.startSide,
-													body,
-												})
-											}
-											onCancel={onCancelComment}
-											mentionConfig={mentionConfig}
-										/>
-									);
-								}
-
-								if ("body" in data && !("id" in data)) {
-									return (
-										<PendingCommentBubble
-											comment={data as PendingComment}
-											onEdit={onEditComment}
-											mentionConfig={mentionConfig}
-										/>
-									);
-								}
-
-								if ("id" in data) {
-									const c = data as PullReviewComment;
-									const replies = repliesByCommentId.get(c.id);
-									return (
-										<ReviewCommentThread
-											comment={c}
-											replies={replies}
-											owner={owner}
-											repo={repo}
-											pullNumber={pullNumber}
-											viewerLogin={viewerLogin}
-											threadInfo={threadInfoByCommentId?.get(c.id)}
-										/>
-									);
-								}
-
-								return null;
-							}}
+							renderAnnotation={renderAnnotation}
 						/>
 					</Suspense>
 				</div>
@@ -312,7 +366,7 @@ export const ReviewFileDiffBlock = memo(function ReviewFileDiffBlock({
 	);
 });
 
-function FileHeader({
+const FileHeader = memo(function FileHeader({
 	file,
 	isCollapsed,
 	onToggleCollapse,
@@ -392,7 +446,7 @@ function FileHeader({
 			</span>
 		</div>
 	);
-}
+});
 
 function InlineCommentForm({
 	isMultiLine,

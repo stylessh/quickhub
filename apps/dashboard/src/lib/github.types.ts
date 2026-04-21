@@ -327,6 +327,18 @@ export type PullFile = {
 
 export type PullFileSummary = Omit<PullFile, "patch" | "sha">;
 
+export type PullFileSummariesPageInput = {
+	owner: string;
+	repo: string;
+	pullNumber: number;
+	cursor?: string | null;
+};
+
+export type PullFileSummariesPage = {
+	items: PullFileSummary[];
+	nextCursor: string | null;
+};
+
 export type PullFilesPageInput = {
 	owner: string;
 	repo: string;

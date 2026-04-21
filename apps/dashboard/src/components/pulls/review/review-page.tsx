@@ -25,6 +25,7 @@ import {
 	memo,
 	Suspense,
 	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -56,7 +57,7 @@ import type { ReviewDiffPaneHandle } from "./review-diff-pane";
 import {
 	type ActiveFileStore,
 	createActiveFileStore,
-	ReviewFileTreeNode,
+	ReviewVirtualizedFileTree,
 } from "./review-file-tree";
 import { ReviewSubmitPopover } from "./review-submit-popover";
 import type {
@@ -142,11 +143,28 @@ export function ReviewPage() {
 		refetchOnWindowFocus: false,
 	});
 
-	const fileSummariesQuery = useQuery({
+	const fileSummariesQuery = useInfiniteQuery({
 		...githubPullFileSummariesQueryOptions(scope, input),
 		refetchOnMount: false,
 		refetchOnWindowFocus: false,
 	});
+
+	// Auto-fetch remaining pages so the sidebar streams in the whole tree
+	// without requiring user interaction. Each page is ~100 files, so for a
+	// 3k-file PR this fires ~30 sequential worker calls in the background
+	// while the sidebar renders incrementally.
+	useEffect(() => {
+		if (
+			fileSummariesQuery.hasNextPage &&
+			!fileSummariesQuery.isFetchingNextPage
+		) {
+			void fileSummariesQuery.fetchNextPage();
+		}
+	}, [
+		fileSummariesQuery.hasNextPage,
+		fileSummariesQuery.isFetchingNextPage,
+		fileSummariesQuery.fetchNextPage,
+	]);
 
 	const filesQuery = useInfiniteQuery({
 		queryKey: filesQueryKey,
@@ -164,6 +182,20 @@ export function ReviewPage() {
 		refetchOnWindowFocus: false,
 	});
 
+	// Auto-fetch remaining pages of patches in the background so that by the
+	// time the user scrolls deeper into the PR, the data is already there.
+	// Keeps the initial perPage small so the first-visible files render fast,
+	// then streams the rest chunk-by-chunk behind the UI.
+	useEffect(() => {
+		if (filesQuery.hasNextPage && !filesQuery.isFetchingNextPage) {
+			void filesQuery.fetchNextPage();
+		}
+	}, [
+		filesQuery.hasNextPage,
+		filesQuery.isFetchingNextPage,
+		filesQuery.fetchNextPage,
+	]);
+
 	const hasDiffPayload = filesQuery.data !== undefined;
 	const reviewCommentsQuery = useQuery({
 		...githubPullReviewCommentsQueryOptions(scope, input),
@@ -178,7 +210,10 @@ export function ReviewPage() {
 	useGitHubSignalStream(webhookRefreshTargets);
 
 	const pr = pageQuery.data?.detail ?? null;
-	const sidebarFiles = fileSummariesQuery.data ?? [];
+	const sidebarFiles = useMemo(
+		() => fileSummariesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+		[fileSummariesQuery.data],
+	);
 	const diffFiles = useMemo(
 		() => filesQuery.data?.pages.flatMap((page) => page.files) ?? [],
 		[filesQuery.data],
@@ -248,7 +283,7 @@ export function ReviewPage() {
 		mentionActivated,
 	]);
 
-	const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified");
+	const [diffStyle, setDiffStyle] = useState<"unified" | "split">("split");
 	const [pendingComments, setPendingComments] = useState<PendingComment[]>([]);
 	const [activeCommentForm, setActiveCommentForm] =
 		useState<ActiveCommentForm | null>(null);
@@ -339,15 +374,14 @@ export function ReviewPage() {
 		return map;
 	}, [pendingComments]);
 
-	const diffStats = useMemo(() => {
-		let totalAdditions = 0;
-		let totalDeletions = 0;
-		for (const file of sidebarFiles) {
-			totalAdditions += file.additions;
-			totalDeletions += file.deletions;
-		}
-		return { totalAdditions, totalDeletions };
-	}, [sidebarFiles]);
+	// Read totals off the PR node (one cheap GraphQL call) instead of summing
+	// streamed file summaries — otherwise the toolbar chip can't show real
+	// numbers until every summary page arrives (~seconds for a 3k-file PR).
+	const diffStats = {
+		totalAdditions: pr?.additions ?? 0,
+		totalDeletions: pr?.deletions ?? 0,
+	};
+	const prChangedFiles = pr?.changedFiles ?? 0;
 
 	const addPendingComment = useCallback((comment: PendingComment) => {
 		setPendingComments((previous) => [...previous, comment]);
@@ -441,8 +475,28 @@ export function ReviewPage() {
 
 				if (success) {
 					setPendingComments([]);
+					// Only invalidate queries scoped to this specific PR. Invalidating
+					// `githubQueryKeys.all` would refetch every GitHub query in the
+					// client (other repos, notifications, signals) for no reason.
 					void queryClient.invalidateQueries({
-						queryKey: githubQueryKeys.all,
+						predicate: (query) => {
+							const key = query.queryKey;
+							if (key[0] !== "github") return false;
+							for (let i = 2; i < key.length; i++) {
+								const part = key[i];
+								if (!part || typeof part !== "object") continue;
+								const rec = part as Record<string, unknown>;
+								if (
+									rec.owner === owner &&
+									rec.repo === repo &&
+									(rec.pullNumber === pullNumber ||
+										rec.issueNumber === pullNumber)
+								) {
+									return true;
+								}
+							}
+							return false;
+						},
 					});
 					void navigate({
 						to: "/$owner/$repo/pull/$pullId",
@@ -501,6 +555,8 @@ export function ReviewPage() {
 	}
 
 	const sidebarFileCount = sidebarFiles.length;
+	const isStreamingSummaries =
+		fileSummariesQuery.isFetching || fileSummariesQuery.hasNextPage;
 
 	const diffContent = hasDiffPayload ? (
 		<Suspense fallback={<ReviewDiffPanePlaceholder />}>
@@ -541,7 +597,7 @@ export function ReviewPage() {
 				repo={repo}
 				pullId={pullId}
 				pr={pr}
-				sidebarFileCount={sidebarFileCount}
+				sidebarFileCount={prChangedFiles}
 				diffStats={diffStats}
 				diffStyle={diffStyle}
 				onSetDiffStyle={setDiffStyle}
@@ -558,6 +614,7 @@ export function ReviewPage() {
 						<ReviewSidebar
 							sidebarFiles={sidebarFiles}
 							sidebarFileCount={sidebarFileCount}
+							isStreamingSummaries={isStreamingSummaries}
 							activeFileStore={activeFileStore}
 							onFileClick={scrollToFile}
 						/>
@@ -576,6 +633,7 @@ export function ReviewPage() {
 							<ReviewSidebar
 								sidebarFiles={sidebarFiles}
 								sidebarFileCount={sidebarFileCount}
+								isStreamingSummaries={isStreamingSummaries}
 								activeFileStore={activeFileStore}
 								onFileClick={scrollToFile}
 							/>
@@ -722,11 +780,13 @@ const ReviewToolbar = memo(function ReviewToolbar({
 export const ReviewSidebar = memo(function ReviewSidebar({
 	sidebarFiles,
 	sidebarFileCount,
+	isStreamingSummaries = false,
 	activeFileStore,
 	onFileClick,
 }: {
 	sidebarFiles: PullFileSummary[];
 	sidebarFileCount: number;
+	isStreamingSummaries?: boolean;
 	activeFileStore: ActiveFileStore;
 	onFileClick: (path: string) => void;
 }) {
@@ -768,20 +828,23 @@ export const ReviewSidebar = memo(function ReviewSidebar({
 				shortcutKey="f"
 			/>
 
-			<div className="flex-1 overflow-auto py-1">
-				{fileTree.map((node) => (
-					<ReviewFileTreeNode
-						key={node.path}
-						node={node}
-						depth={0}
-						activeFileStore={activeFileStore}
-						onFileClick={onFileClick}
-					/>
-				))}
-			</div>
+			<ReviewVirtualizedFileTree
+				tree={fileTree}
+				activeFileStore={activeFileStore}
+				onFileClick={onFileClick}
+			/>
 
-			<div className="border-t px-3 py-2 text-xs text-muted-foreground">
-				{sidebarFileCount} {sidebarFileCount === 1 ? "file" : "files"} changed
+			<div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
+				<span>
+					{sidebarFileCount} {sidebarFileCount === 1 ? "file" : "files"}
+					{isStreamingSummaries ? " loaded…" : " changed"}
+				</span>
+				{isStreamingSummaries && (
+					<output
+						aria-label="Loading more files"
+						className="ml-auto inline-block size-2.5 shrink-0 animate-spin rounded-full border border-muted-foreground/60 border-t-transparent"
+					/>
+				)}
 			</div>
 		</div>
 	);

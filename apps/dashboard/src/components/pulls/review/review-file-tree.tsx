@@ -1,6 +1,14 @@
 import { FileIcon, FolderIcon } from "@diffkit/icons";
 import { cn } from "@diffkit/ui/lib/utils";
-import { memo, useCallback, useState, useSyncExternalStore } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+	memo,
+	useCallback,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import type { FileTreeNode } from "./review-types";
 import { encodeFileId } from "./review-utils";
 
@@ -42,70 +50,169 @@ function useIsActiveFile(store: ActiveFileStore, path: string): boolean {
 	return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-export const ReviewFileTreeNode = memo(function ReviewFileTreeNode({
+// Row height is fixed so useVirtualizer can compute absolute positions without
+// measuring. Keep this in sync with the `py-1.5 text-[13px]` styling below.
+const ROW_HEIGHT = 30;
+
+type FlatRow = {
+	node: FileTreeNode;
+	depth: number;
+};
+
+function collectFlatRows(
+	nodes: FileTreeNode[],
+	expanded: ReadonlySet<string>,
+	depth: number,
+	out: FlatRow[],
+) {
+	for (const node of nodes) {
+		out.push({ node, depth });
+		if (node.type === "directory" && expanded.has(node.path)) {
+			collectFlatRows(node.children, expanded, depth + 1, out);
+		}
+	}
+}
+
+function collectAllDirectoryPaths(
+	nodes: FileTreeNode[],
+	out: Set<string>,
+): Set<string> {
+	for (const node of nodes) {
+		if (node.type === "directory") {
+			out.add(node.path);
+			collectAllDirectoryPaths(node.children, out);
+		}
+	}
+	return out;
+}
+
+export const ReviewVirtualizedFileTree = memo(
+	function ReviewVirtualizedFileTree({
+		tree,
+		activeFileStore,
+		onFileClick,
+	}: {
+		tree: FileTreeNode[];
+		activeFileStore: ActiveFileStore;
+		onFileClick: (path: string) => void;
+	}) {
+		// Default: every directory expanded. Once the user toggles something we
+		// store their explicit override in a state Set.
+		const defaultExpanded = useMemo(
+			() => collectAllDirectoryPaths(tree, new Set<string>()),
+			[tree],
+		);
+		const [explicitExpanded, setExplicitExpanded] =
+			useState<Set<string> | null>(null);
+		const expanded = explicitExpanded ?? defaultExpanded;
+
+		const flatRows = useMemo(() => {
+			const out: FlatRow[] = [];
+			collectFlatRows(tree, expanded, 0, out);
+			return out;
+		}, [tree, expanded]);
+
+		const toggleDirectory = useCallback(
+			(path: string) => {
+				setExplicitExpanded((prev) => {
+					const base = prev ?? defaultExpanded;
+					const next = new Set(base);
+					if (next.has(path)) next.delete(path);
+					else next.add(path);
+					return next;
+				});
+			},
+			[defaultExpanded],
+		);
+
+		const scrollRef = useRef<HTMLDivElement>(null);
+
+		const virtualizer = useVirtualizer({
+			count: flatRows.length,
+			getScrollElement: () => scrollRef.current,
+			estimateSize: () => ROW_HEIGHT,
+			overscan: 12,
+		});
+
+		const items = virtualizer.getVirtualItems();
+		const totalSize = virtualizer.getTotalSize();
+
+		return (
+			<div ref={scrollRef} className="flex-1 overflow-auto py-1">
+				<div className="relative w-full" style={{ height: `${totalSize}px` }}>
+					{items.map((virtualItem) => {
+						const row = flatRows[virtualItem.index];
+						if (!row) return null;
+						const { node, depth } = row;
+						return (
+							<div
+								key={virtualItem.key}
+								className="absolute inset-x-0 top-0"
+								style={{
+									height: `${virtualItem.size}px`,
+									transform: `translateY(${virtualItem.start}px)`,
+								}}
+							>
+								{node.type === "directory" ? (
+									<DirectoryRow
+										node={node}
+										depth={depth}
+										isOpen={expanded.has(node.path)}
+										onToggle={toggleDirectory}
+									/>
+								) : (
+									<FileTreeLeaf
+										node={node}
+										depth={depth}
+										activeFileStore={activeFileStore}
+										onFileClick={onFileClick}
+									/>
+								)}
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		);
+	},
+);
+
+const DirectoryRow = memo(function DirectoryRow({
 	node,
 	depth,
-	activeFileStore,
-	onFileClick,
+	isOpen,
+	onToggle,
 }: {
 	node: FileTreeNode;
 	depth: number;
-	activeFileStore: ActiveFileStore;
-	onFileClick: (path: string) => void;
+	isOpen: boolean;
+	onToggle: (path: string) => void;
 }) {
-	const [isOpen, setIsOpen] = useState(true);
-
-	if (node.type === "directory") {
-		return (
-			<div>
-				<button
-					type="button"
-					className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground"
-					style={{ paddingLeft: `${depth * 12 + 12}px` }}
-					onClick={() => setIsOpen(!isOpen)}
-				>
-					<svg
-						aria-hidden="true"
-						className={cn(
-							"size-3 shrink-0 text-muted-foreground/60 transition-transform",
-							isOpen && "rotate-90",
-						)}
-						viewBox="0 0 16 16"
-						fill="currentColor"
-					>
-						<path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-					</svg>
-					<FolderIcon
-						size={14}
-						strokeWidth={2}
-						className="shrink-0 text-muted-foreground"
-					/>
-					<span className="truncate font-medium">{node.name}</span>
-				</button>
-				{isOpen && (
-					<div>
-						{node.children.map((child) => (
-							<ReviewFileTreeNode
-								key={child.path}
-								node={child}
-								depth={depth + 1}
-								activeFileStore={activeFileStore}
-								onFileClick={onFileClick}
-							/>
-						))}
-					</div>
-				)}
-			</div>
-		);
-	}
-
 	return (
-		<FileTreeLeaf
-			node={node}
-			depth={depth}
-			activeFileStore={activeFileStore}
-			onFileClick={onFileClick}
-		/>
+		<button
+			type="button"
+			className="flex h-full w-full items-center gap-1.5 px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground"
+			style={{ paddingLeft: `${depth * 12 + 12}px` }}
+			onClick={() => onToggle(node.path)}
+		>
+			<svg
+				aria-hidden="true"
+				className={cn(
+					"size-3 shrink-0 text-muted-foreground/60 transition-transform",
+					isOpen && "rotate-90",
+				)}
+				viewBox="0 0 16 16"
+				fill="currentColor"
+			>
+				<path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
+			</svg>
+			<FolderIcon
+				size={14}
+				strokeWidth={2}
+				className="shrink-0 text-muted-foreground"
+			/>
+			<span className="truncate font-medium">{node.name}</span>
+		</button>
 	);
 });
 
@@ -127,7 +234,7 @@ const FileTreeLeaf = memo(function FileTreeLeaf({
 		<a
 			href={`#${fileId}`}
 			className={cn(
-				"flex w-full items-center gap-1.5 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-1",
+				"flex h-full w-full items-center gap-1.5 px-3 py-1.5 text-[13px] transition-colors hover:bg-surface-1",
 				isActive ? "bg-surface-1 text-foreground" : "text-muted-foreground",
 			)}
 			style={{ paddingLeft: `${depth * 12 + 30}px` }}
