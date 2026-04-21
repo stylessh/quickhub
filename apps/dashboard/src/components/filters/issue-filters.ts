@@ -1,13 +1,10 @@
-import {
-	CircleIcon,
-	FolderLibraryIcon,
-	IssuesIcon,
-	UserCircleIcon,
-} from "@diffkit/icons";
+import { CircleIcon, IssuesIcon } from "@diffkit/icons";
 import { createElement } from "react";
+import { authorFilterDef, repoFilterDef } from "./filter-helpers";
 import type {
 	FilterableItem,
 	FilterDefinition,
+	FilterOption,
 	SortOption,
 } from "./use-list-filters";
 
@@ -19,159 +16,73 @@ function asIssue(item: FilterableItem): IssueFilterableItem {
 	return item as IssueFilterableItem;
 }
 
+type IssueStatus = "open" | "completed" | "not_planned";
+
+function issueStatus(item: IssueFilterableItem): IssueStatus {
+	if (item.state !== "closed") return "open";
+	return item.stateReason === "not_planned" ? "not_planned" : "completed";
+}
+
+const ISSUE_STATUS_META: {
+	value: IssueStatus;
+	label: string;
+	colorClass: string;
+}[] = [
+	{ value: "open", label: "Open", colorClass: "text-green-500" },
+	{
+		value: "completed",
+		label: "Closed (completed)",
+		colorClass: "text-purple-500",
+	},
+	{
+		value: "not_planned",
+		label: "Closed (not planned)",
+		colorClass: "text-muted-foreground",
+	},
+];
+
+function toStatusOption(
+	meta: (typeof ISSUE_STATUS_META)[number],
+): FilterOption {
+	return {
+		value: meta.value,
+		label: meta.label,
+		icon: createElement(IssuesIcon, {
+			size: 14,
+			className: meta.colorClass,
+		}),
+	};
+}
+
+const issueStatusFilterDef: FilterDefinition = {
+	id: "status",
+	label: "Status",
+	icon: CircleIcon,
+	extractOptions: (items) => {
+		const present = new Set<IssueStatus>();
+		for (const item of items) present.add(issueStatus(asIssue(item)));
+		return ISSUE_STATUS_META.filter((m) => present.has(m.value)).map(
+			toStatusOption,
+		);
+	},
+	match: (item, values) => values.has(issueStatus(asIssue(item))),
+};
+
+const repoIssueStatusFilterDef: FilterDefinition = {
+	...issueStatusFilterDef,
+	extractOptions: () => ISSUE_STATUS_META.map(toStatusOption),
+};
+
 export const issueFilterDefs: FilterDefinition[] = [
-	{
-		id: "repo",
-		label: "Repository",
-		icon: FolderLibraryIcon,
-		extractOptions: (items) => {
-			const repos = new Map<string, string>();
-			for (const item of items) {
-				const name = item.repository.fullName;
-				if (!repos.has(name)) repos.set(name, name);
-			}
-			return [...repos.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([value, label]) => ({ value, label }));
-		},
-		match: (item, values) => values.has(item.repository.fullName),
-	},
-	{
-		id: "author",
-		label: "Author",
-		icon: UserCircleIcon,
-		extractOptions: (items) => {
-			const authors = new Map<string, { login: string; avatarUrl: string }>();
-			for (const item of items) {
-				if (item.author && !authors.has(item.author.login)) {
-					authors.set(item.author.login, item.author);
-				}
-			}
-			return [...authors.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([login, author]) => ({
-					value: login,
-					label: login,
-					icon: createElement("img", {
-						src: author.avatarUrl,
-						alt: login,
-						className: "size-4 rounded-full",
-					}),
-				}));
-		},
-		match: (item, values) =>
-			item.author ? values.has(item.author.login) : false,
-	},
-	{
-		id: "status",
-		label: "Status",
-		icon: CircleIcon,
-		extractOptions: (items) => {
-			const statuses = new Set<string>();
-			for (const item of items) {
-				const issue = asIssue(item);
-				if (issue.state === "closed") {
-					statuses.add(
-						issue.stateReason === "not_planned" ? "not_planned" : "completed",
-					);
-				} else {
-					statuses.add("open");
-				}
-			}
-			const all = [
-				{ value: "open", label: "Open" },
-				{ value: "completed", label: "Closed (completed)" },
-				{ value: "not_planned", label: "Closed (not planned)" },
-			];
-			const colorMap: Record<string, string> = {
-				open: "text-green-500",
-				completed: "text-purple-500",
-				not_planned: "text-muted-foreground",
-			};
-			return all
-				.filter((s) => statuses.has(s.value))
-				.map((s) => ({
-					value: s.value,
-					label: s.label,
-					icon: createElement(IssuesIcon, {
-						size: 14,
-						className: colorMap[s.value],
-					}),
-				}));
-		},
-		match: (item, values) => {
-			const issue = asIssue(item);
-			if (issue.state === "closed") {
-				return issue.stateReason === "not_planned"
-					? values.has("not_planned")
-					: values.has("completed");
-			}
-			return values.has("open");
-		},
-	},
+	repoFilterDef,
+	authorFilterDef,
+	issueStatusFilterDef,
 ];
 
 /** Filter defs for repo-scoped issue lists — static options, no repository filter. */
 export const repoIssueFilterDefs: FilterDefinition[] = [
-	{
-		id: "status",
-		label: "Status",
-		icon: CircleIcon,
-		extractOptions: () => {
-			const colorMap: Record<string, string> = {
-				open: "text-green-500",
-				completed: "text-purple-500",
-				not_planned: "text-muted-foreground",
-			};
-			return [
-				{ value: "open", label: "Open" },
-				{ value: "completed", label: "Closed (completed)" },
-				{ value: "not_planned", label: "Closed (not planned)" },
-			].map((s) => ({
-				value: s.value,
-				label: s.label,
-				icon: createElement(IssuesIcon, {
-					size: 14,
-					className: colorMap[s.value],
-				}),
-			}));
-		},
-		match: (item, values) => {
-			const issue = asIssue(item);
-			if (issue.state === "closed") {
-				return issue.stateReason === "not_planned"
-					? values.has("not_planned")
-					: values.has("completed");
-			}
-			return values.has("open");
-		},
-	},
-	{
-		id: "author",
-		label: "Author",
-		icon: UserCircleIcon,
-		extractOptions: (items) => {
-			const authors = new Map<string, { login: string; avatarUrl: string }>();
-			for (const item of items) {
-				if (item.author && !authors.has(item.author.login)) {
-					authors.set(item.author.login, item.author);
-				}
-			}
-			return [...authors.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([login, author]) => ({
-					value: login,
-					label: login,
-					icon: createElement("img", {
-						src: author.avatarUrl,
-						alt: login,
-						className: "size-4 rounded-full",
-					}),
-				}));
-		},
-		match: (item, values) =>
-			item.author ? values.has(item.author.login) : false,
-	},
+	repoIssueStatusFilterDef,
+	authorFilterDef,
 ];
 
 export const issueSortOptions: SortOption[] = [

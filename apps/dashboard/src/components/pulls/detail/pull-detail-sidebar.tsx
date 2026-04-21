@@ -217,6 +217,15 @@ function ReviewersSection({
 		);
 	}, [teams, search]);
 
+	const collaboratorByLogin = useMemo(
+		() => new Map(collaborators.map((c) => [c.login, c])),
+		[collaborators],
+	);
+	const teamBySlug = useMemo(
+		() => new Map(teams.map((t) => [t.slug, t])),
+		[teams],
+	);
+
 	const pageQueryKey = githubQueryKeys.pulls.page(scope, {
 		owner,
 		repo,
@@ -225,9 +234,7 @@ function ReviewersSection({
 
 	const toggleReviewer = (login: string) => {
 		const isRequested = requestedLogins.has(login);
-		const collaborator = collaborators.find(
-			(candidate) => candidate.login === login,
-		);
+		const collaborator = collaboratorByLogin.get(login);
 
 		mutate({
 			mutationFn: () =>
@@ -271,7 +278,7 @@ function ReviewersSection({
 
 	const toggleTeam = (slug: string) => {
 		const isRequested = requestedTeamSlugs.has(slug);
-		const team = teams.find((candidate) => candidate.slug === slug);
+		const team = teamBySlug.get(slug);
 
 		mutate({
 			mutationFn: () =>

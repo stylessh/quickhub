@@ -1,16 +1,16 @@
 import {
 	CircleIcon,
-	FolderLibraryIcon,
 	GitMergeIcon,
 	GitPullRequestClosedIcon,
 	GitPullRequestDraftIcon,
 	GitPullRequestIcon,
-	UserCircleIcon,
 } from "@diffkit/icons";
 import { createElement } from "react";
+import { authorFilterDef, repoFilterDef } from "./filter-helpers";
 import type {
 	FilterableItem,
 	FilterDefinition,
+	FilterOption,
 	SortOption,
 } from "./use-list-filters";
 
@@ -23,162 +23,87 @@ function asPull(item: FilterableItem): PullFilterableItem {
 	return item as PullFilterableItem;
 }
 
+type PullStatus = "open" | "draft" | "merged" | "closed";
+
+function pullStatus(item: PullFilterableItem): PullStatus {
+	if (item.mergedAt) return "merged";
+	if (item.state === "closed") return "closed";
+	if (item.isDraft) return "draft";
+	return "open";
+}
+
+const PULL_STATUS_META: {
+	value: PullStatus;
+	label: string;
+	icon: React.ComponentType<{ size?: number; className?: string }>;
+	colorClass: string;
+}[] = [
+	{
+		value: "open",
+		label: "Open",
+		icon: GitPullRequestIcon,
+		colorClass: "text-green-500",
+	},
+	{
+		value: "draft",
+		label: "Draft",
+		icon: GitPullRequestDraftIcon,
+		colorClass: "text-muted-foreground",
+	},
+	{
+		value: "merged",
+		label: "Merged",
+		icon: GitMergeIcon,
+		colorClass: "text-purple-500",
+	},
+	{
+		value: "closed",
+		label: "Closed",
+		icon: GitPullRequestClosedIcon,
+		colorClass: "text-red-500",
+	},
+];
+
+function toStatusOption(meta: (typeof PULL_STATUS_META)[number]): FilterOption {
+	return {
+		value: meta.value,
+		label: meta.label,
+		icon: createElement(meta.icon, {
+			size: 14,
+			className: meta.colorClass,
+		}),
+	};
+}
+
+const pullStatusFilterDef: FilterDefinition = {
+	id: "status",
+	label: "Status",
+	icon: CircleIcon,
+	extractOptions: (items) => {
+		const present = new Set<PullStatus>();
+		for (const item of items) present.add(pullStatus(asPull(item)));
+		return PULL_STATUS_META.filter((m) => present.has(m.value)).map(
+			toStatusOption,
+		);
+	},
+	match: (item, values) => values.has(pullStatus(asPull(item))),
+};
+
+const repoPullStatusFilterDef: FilterDefinition = {
+	...pullStatusFilterDef,
+	extractOptions: () => PULL_STATUS_META.map(toStatusOption),
+};
+
 export const pullFilterDefs: FilterDefinition[] = [
-	{
-		id: "repo",
-		label: "Repository",
-		icon: FolderLibraryIcon,
-		extractOptions: (items) => {
-			const repos = new Map<string, string>();
-			for (const item of items) {
-				const name = item.repository.fullName;
-				if (!repos.has(name)) repos.set(name, name);
-			}
-			return [...repos.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([value, label]) => ({ value, label }));
-		},
-		match: (item, values) => values.has(item.repository.fullName),
-	},
-	{
-		id: "author",
-		label: "Author",
-		icon: UserCircleIcon,
-		extractOptions: (items) => {
-			const authors = new Map<string, { login: string; avatarUrl: string }>();
-			for (const item of items) {
-				if (item.author && !authors.has(item.author.login)) {
-					authors.set(item.author.login, item.author);
-				}
-			}
-			return [...authors.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([login, author]) => ({
-					value: login,
-					label: login,
-					icon: createElement("img", {
-						src: author.avatarUrl,
-						alt: login,
-						className: "size-4 rounded-full",
-					}),
-				}));
-		},
-		match: (item, values) =>
-			item.author ? values.has(item.author.login) : false,
-	},
-	{
-		id: "status",
-		label: "Status",
-		icon: CircleIcon,
-		extractOptions: (items) => {
-			const statuses = new Set<string>();
-			for (const item of items) {
-				const pull = asPull(item);
-				if (pull.mergedAt) statuses.add("merged");
-				else if (pull.state === "closed") statuses.add("closed");
-				else if (pull.isDraft) statuses.add("draft");
-				else statuses.add("open");
-			}
-			const all: {
-				value: string;
-				label: string;
-				icon: React.ComponentType<{ size?: number; className?: string }>;
-			}[] = [
-				{ value: "open", label: "Open", icon: GitPullRequestIcon },
-				{ value: "draft", label: "Draft", icon: GitPullRequestDraftIcon },
-				{ value: "merged", label: "Merged", icon: GitMergeIcon },
-				{ value: "closed", label: "Closed", icon: GitPullRequestClosedIcon },
-			];
-			const colorMap: Record<string, string> = {
-				open: "text-green-500",
-				draft: "text-muted-foreground",
-				merged: "text-purple-500",
-				closed: "text-red-500",
-			};
-			return all
-				.filter((s) => statuses.has(s.value))
-				.map((s) => ({
-					value: s.value,
-					label: s.label,
-					icon: createElement(s.icon, {
-						size: 14,
-						className: colorMap[s.value],
-					}),
-				}));
-		},
-		match: (item, values) => {
-			const pull = asPull(item);
-			if (pull.mergedAt) return values.has("merged");
-			if (pull.state === "closed") return values.has("closed");
-			if (pull.isDraft) return values.has("draft");
-			return values.has("open");
-		},
-	},
+	repoFilterDef,
+	authorFilterDef,
+	pullStatusFilterDef,
 ];
 
 /** Filter defs for repo-scoped pull lists — static options, no repository filter. */
 export const repoPullFilterDefs: FilterDefinition[] = [
-	{
-		id: "status",
-		label: "Status",
-		icon: CircleIcon,
-		extractOptions: () => {
-			const colorMap: Record<string, string> = {
-				open: "text-green-500",
-				draft: "text-muted-foreground",
-				merged: "text-purple-500",
-				closed: "text-red-500",
-			};
-			return (
-				[
-					{ value: "open", label: "Open", icon: GitPullRequestIcon },
-					{ value: "draft", label: "Draft", icon: GitPullRequestDraftIcon },
-					{ value: "merged", label: "Merged", icon: GitMergeIcon },
-					{ value: "closed", label: "Closed", icon: GitPullRequestClosedIcon },
-				] as const
-			).map((s) => ({
-				value: s.value,
-				label: s.label,
-				icon: createElement(s.icon, {
-					size: 14,
-					className: colorMap[s.value],
-				}),
-			}));
-		},
-		match: (item, values) => {
-			const pull = asPull(item);
-			if (pull.mergedAt) return values.has("merged");
-			if (pull.state === "closed") return values.has("closed");
-			if (pull.isDraft) return values.has("draft");
-			return values.has("open");
-		},
-	},
-	{
-		id: "author",
-		label: "Author",
-		icon: UserCircleIcon,
-		extractOptions: (items) => {
-			const authors = new Map<string, { login: string; avatarUrl: string }>();
-			for (const item of items) {
-				if (item.author && !authors.has(item.author.login)) {
-					authors.set(item.author.login, item.author);
-				}
-			}
-			return [...authors.entries()]
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([login, author]) => ({
-					value: login,
-					label: login,
-					icon: createElement("img", {
-						src: author.avatarUrl,
-						alt: login,
-						className: "size-4 rounded-full",
-					}),
-				}));
-		},
-		match: (item, values) =>
-			item.author ? values.has(item.author.login) : false,
-	},
+	repoPullStatusFilterDef,
+	authorFilterDef,
 ];
 
 export const pullSortOptions: SortOption[] = [
