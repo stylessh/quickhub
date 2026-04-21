@@ -37,11 +37,13 @@ const noopEdit = (_a: PendingComment, _b: string) => {};
 export function CompareDiffView({
 	commits,
 	files,
+	filesTruncated = false,
 	owner,
 	repo,
 }: {
 	commits: PullCommit[];
 	files: PullFile[];
+	filesTruncated?: boolean;
 	owner: string;
 	repo: string;
 }) {
@@ -52,13 +54,10 @@ export function CompareDiffView({
 	const loadMoreRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		setVisibleCount((prev) =>
-			Math.min(
-				files.length,
-				Math.max(files.length === 0 ? 0 : INITIAL_VISIBLE_COUNT, prev),
-			),
+		setVisibleCount(
+			Math.min(files.length, files.length === 0 ? 0 : INITIAL_VISIBLE_COUNT),
 		);
-	}, [files.length]);
+	}, [files]);
 
 	useEffect(() => {
 		if (visibleCount >= files.length) return;
@@ -202,6 +201,13 @@ export function CompareDiffView({
 						</div>
 					) : null}
 				</div>
+				{filesTruncated ? (
+					<p className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-2.5 text-xs text-yellow-700 dark:text-yellow-400">
+						This comparison includes more than {files.length} files; GitHub only
+						returns the first {files.length}. Push fewer changes or open the PR
+						to view the full set.
+					</p>
+				) : null}
 				{files.length === 0 ? (
 					<p className="rounded-lg border bg-surface-0 px-4 py-3 text-sm text-muted-foreground">
 						No files changed.

@@ -24,6 +24,7 @@ export function BranchComparisonBanner({
 	currentBranch: string;
 	defaultBranch: string;
 }) {
+	const isSameBranch = currentBranch === defaultBranch;
 	const comparisonQuery = useQuery({
 		...githubBranchComparisonQueryOptions(scope, {
 			owner,
@@ -31,8 +32,10 @@ export function BranchComparisonBanner({
 			base: defaultBranch,
 			head: currentBranch,
 		}),
-		enabled: currentBranch !== defaultBranch,
+		enabled: !isSameBranch,
 	});
+
+	if (isSameBranch) return null;
 
 	if (comparisonQuery.isPending) {
 		return (

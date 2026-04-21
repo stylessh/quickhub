@@ -574,6 +574,11 @@ export type BranchComparison = {
 	totalCommits: number;
 };
 
+export type CompareFilesMeta = {
+	/** True when the GitHub API capped the file list (max 300). */
+	truncated: boolean;
+};
+
 export type RepoContributor = {
 	login: string;
 	avatarUrl: string;

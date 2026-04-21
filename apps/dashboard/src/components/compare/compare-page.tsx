@@ -1,4 +1,5 @@
 import type { MentionCandidate } from "@diffkit/ui/components/markdown-editor";
+import { toast } from "@diffkit/ui/components/sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -179,19 +180,27 @@ export function ComparePage({
 				});
 
 				if (result.ok) {
+					const INVALIDATE_SEGMENTS = new Set([
+						"pulls",
+						"overview",
+						"recentPushableBranch",
+						"branchComparison",
+						"compareDetail",
+					]);
 					await queryClient.invalidateQueries({
 						predicate: (query) => {
 							const key = query.queryKey;
-							return (
-								Array.isArray(key) &&
-								key.some(
-									(k) =>
-										typeof k === "string" &&
-										(k.includes("pulls") || k.includes("repoMeta")),
-								)
+							if (!Array.isArray(key)) return false;
+							return key.some(
+								(k) => typeof k === "string" && INVALIDATE_SEGMENTS.has(k),
 							);
 						},
 					});
+					if (result.warnings && result.warnings.length > 0) {
+						toast.warning("Pull request created with some issues", {
+							description: result.warnings.join("\n"),
+						});
+					}
 					router.navigate({
 						to: "/$owner/$repo/pull/$pullId",
 						params: { owner, repo, pullId: String(result.pullNumber) },
@@ -223,7 +232,27 @@ export function ComparePage({
 
 	if (overviewQuery.error) throw overviewQuery.error;
 	if (compareQuery.error) throw compareQuery.error;
-	if (!repoData || !compare) return <ComparePageSkeleton />;
+	if (overviewQuery.isPending || compareQuery.isPending) {
+		return <ComparePageSkeleton />;
+	}
+	if (!repoData) return <ComparePageSkeleton />;
+	if (!compare) {
+		return (
+			<div className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-20 text-center">
+				<h1 className="text-lg font-semibold">Nothing to compare</h1>
+				<p className="text-sm text-muted-foreground">
+					<code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">
+						{base}
+					</code>{" "}
+					and{" "}
+					<code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">
+						{head}
+					</code>{" "}
+					are identical, or one of them doesn't exist.
+				</p>
+			</div>
+		);
+	}
 
 	return (
 		<div className="h-full overflow-auto">
@@ -280,6 +309,7 @@ export function ComparePage({
 				<CompareDiffView
 					commits={compare.commits}
 					files={compare.files}
+					filesTruncated={compare.filesTruncated}
 					owner={owner}
 					repo={repo}
 				/>

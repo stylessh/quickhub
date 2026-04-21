@@ -7195,7 +7195,7 @@ export type CreatePullRequestInput = {
 };
 
 export type CreatePullRequestResult =
-	| { ok: true; pullNumber: number }
+	| { ok: true; pullNumber: number; warnings?: string[] }
 	| { ok: false; error: string; installUrl?: string };
 
 export const createPullRequest = createServerFn({ method: "POST" })
@@ -7219,43 +7219,60 @@ export const createPullRequest = createServerFn({ method: "POST" })
 
 			const pullNumber = response.data.number;
 
-			const followUps: Array<Promise<unknown>> = [];
+			const followUps: Array<{ name: string; promise: Promise<unknown> }> = [];
 			if (data.labels && data.labels.length > 0) {
-				followUps.push(
-					context.octokit.rest.issues.addLabels({
+				followUps.push({
+					name: "addLabels",
+					promise: context.octokit.rest.issues.addLabels({
 						owner: data.owner,
 						repo: data.repo,
 						issue_number: pullNumber,
 						labels: data.labels,
 					}),
-				);
+				});
 			}
 			if (data.assignees && data.assignees.length > 0) {
-				followUps.push(
-					context.octokit.rest.issues.addAssignees({
+				followUps.push({
+					name: "addAssignees",
+					promise: context.octokit.rest.issues.addAssignees({
 						owner: data.owner,
 						repo: data.repo,
 						issue_number: pullNumber,
 						assignees: data.assignees,
 					}),
-				);
+				});
 			}
 			if (
 				(data.reviewers && data.reviewers.length > 0) ||
 				(data.teamReviewers && data.teamReviewers.length > 0)
 			) {
-				followUps.push(
-					context.octokit.rest.pulls.requestReviewers({
+				followUps.push({
+					name: "requestReviewers",
+					promise: context.octokit.rest.pulls.requestReviewers({
 						owner: data.owner,
 						repo: data.repo,
 						pull_number: pullNumber,
 						reviewers: data.reviewers ?? [],
 						team_reviewers: data.teamReviewers ?? [],
 					}),
-				);
+				});
 			}
+			const warnings: string[] = [];
 			if (followUps.length > 0) {
-				await Promise.allSettled(followUps);
+				const results = await Promise.allSettled(
+					followUps.map((f) => f.promise),
+				);
+				for (let i = 0; i < results.length; i++) {
+					const r = results[i];
+					if (r.status === "rejected") {
+						const reason = r.reason;
+						const msg =
+							reason instanceof Error ? reason.message : String(reason);
+						const name = followUps[i].name;
+						console.error(`[create pull request] ${name} failed`, reason);
+						warnings.push(`${name}: ${msg}`);
+					}
+				}
 			}
 
 			await bumpGitHubCacheNamespaces([
@@ -7266,10 +7283,21 @@ export const createPullRequest = createServerFn({ method: "POST" })
 				}),
 			]);
 
-			return { ok: true, pullNumber };
+			return {
+				ok: true,
+				pullNumber,
+				...(warnings.length > 0 ? { warnings } : {}),
+			};
 		} catch (error) {
 			const result = toMutationError("create pull request", error);
-			return { ok: false, error: result.ok ? "" : result.error };
+			if (result.ok) {
+				return { ok: false, error: "" };
+			}
+			return {
+				ok: false,
+				error: result.error,
+				...(result.installUrl ? { installUrl: result.installUrl } : {}),
+			};
 		}
 	});
 
@@ -8614,6 +8642,9 @@ export const getRecentPushableBranch = createServerFn({ method: "GET" })
 		const context = await getGitHubContextForRepository(data);
 		if (!context) return null;
 
+		const userContext = await getGitHubUserContextForRepository(data);
+		if (!userContext) return null;
+
 		const repoCodeKey = githubRevalidationSignalKeys.repoCode(data);
 		const repoMetaKey = githubRevalidationSignalKeys.repoMeta(data);
 
@@ -8627,7 +8658,7 @@ export const getRecentPushableBranch = createServerFn({ method: "GET" })
 				namespaceKeys: [repoCodeKey, repoMetaKey],
 				cacheMode: "split",
 				fetcher: async () => {
-					const viewer = await getViewer(context);
+					const viewer = await getViewer(userContext);
 					if (!viewer.login) {
 						return {
 							kind: "success",
@@ -8649,14 +8680,15 @@ export const getRecentPushableBranch = createServerFn({ method: "GET" })
 						};
 					}
 
-					const activities = await context.octokit.rest.repos.listActivities({
-						owner: data.owner,
-						repo: data.repo,
-						actor: viewer.login,
-						activity_type: "push",
-						time_period: "day",
-						per_page: 10,
-					});
+					const activities =
+						await userContext.octokit.rest.repos.listActivities({
+							owner: data.owner,
+							repo: data.repo,
+							actor: viewer.login,
+							activity_type: "push",
+							time_period: "day",
+							per_page: 10,
+						});
 
 					const seen = new Set<string>();
 					for (const activity of activities.data) {
@@ -8719,7 +8751,13 @@ export type CompareDetail = {
 	totalCommits: number;
 	commits: PullCommit[];
 	files: PullFile[];
+	/** True when the file list hit GitHub's 300-file cap for this endpoint. */
+	filesTruncated: boolean;
 };
+
+const COMPARE_COMMITS_MAX_PAGES = 3;
+const COMPARE_COMMITS_PER_PAGE = 100;
+const COMPARE_FILES_CAP = 300;
 
 export const getCompareDetail = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<BranchComparisonInput>)
@@ -8728,50 +8766,87 @@ export const getCompareDetail = createServerFn({ method: "GET" })
 		const context = await getGitHubContextForRepository(data);
 		if (!context) return null;
 
-		return getCachedGitHubRequest<
-			Awaited<
-				ReturnType<GitHubClient["rest"]["repos"]["compareCommitsWithBasehead"]>
-			>["data"],
-			CompareDetail
-		>({
-			context,
-			resource: "repo.compareDetail.v1",
-			params: data,
-			freshForMs: githubCachePolicy.detail.staleTimeMs,
-			signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
-			namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
-			cacheMode: "split",
-			request: (headers) =>
-				context.octokit.rest.repos.compareCommitsWithBasehead({
-					owner: data.owner,
-					repo: data.repo,
-					basehead: `${data.base}...${data.head}`,
-					per_page: 100,
-					headers,
-				}),
-			mapData: (comparison) => ({
-				aheadBy: comparison.ahead_by,
-				behindBy: comparison.behind_by,
-				status: comparison.status as CompareDetail["status"],
-				totalCommits: comparison.total_commits,
-				commits: comparison.commits.map((c) => ({
-					sha: c.sha,
-					message: c.commit.message,
-					createdAt: c.commit.committer?.date ?? c.commit.author?.date ?? "",
-					author: mapActor(c.author),
-				})),
-				files: (comparison.files ?? []).map((f) => ({
-					sha: f.sha ?? null,
-					filename: f.filename,
-					status: f.status as PullFile["status"],
-					additions: f.additions,
-					deletions: f.deletions,
-					changes: f.changes,
-					patch: f.patch ?? null,
-					previousFilename: f.previous_filename ?? null,
-				})),
-			}),
-		}).catch(() => null);
+		try {
+			return await getOrRevalidateGitHubResource<CompareDetail>({
+				userId: context.session.user.id,
+				resource: "repo.compareDetail.v2",
+				params: data,
+				freshForMs: githubCachePolicy.detail.staleTimeMs,
+				signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
+				namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
+				cacheMode: "split",
+				fetcher: async () => {
+					const first =
+						await context.octokit.rest.repos.compareCommitsWithBasehead({
+							owner: data.owner,
+							repo: data.repo,
+							basehead: `${data.base}...${data.head}`,
+							per_page: COMPARE_COMMITS_PER_PAGE,
+							page: 1,
+						});
+
+					const commitsRaw: (typeof first.data.commits)[number][] = [
+						...first.data.commits,
+					];
+					const totalCommits = first.data.total_commits;
+
+					// Paginate additional commit pages — compareCommitsWithBasehead
+					// returns files only on page 1, so we only collect commits here.
+					for (let page = 2; page <= COMPARE_COMMITS_MAX_PAGES; page++) {
+						if (commitsRaw.length >= totalCommits) break;
+						const next =
+							await context.octokit.rest.repos.compareCommitsWithBasehead({
+								owner: data.owner,
+								repo: data.repo,
+								basehead: `${data.base}...${data.head}`,
+								per_page: COMPARE_COMMITS_PER_PAGE,
+								page,
+							});
+						if (next.data.commits.length === 0) break;
+						commitsRaw.push(...next.data.commits);
+					}
+
+					const files = first.data.files ?? [];
+					const filesTruncated = files.length >= COMPARE_FILES_CAP;
+					if (filesTruncated) {
+						console.warn(
+							`[compare detail] file list truncated at ${COMPARE_FILES_CAP} for ${data.owner}/${data.repo} ${data.base}...${data.head}`,
+						);
+					}
+
+					return {
+						kind: "success",
+						data: {
+							aheadBy: first.data.ahead_by,
+							behindBy: first.data.behind_by,
+							status: first.data.status as CompareDetail["status"],
+							totalCommits,
+							commits: commitsRaw.map((c) => ({
+								sha: c.sha,
+								message: c.commit.message,
+								createdAt:
+									c.commit.committer?.date ?? c.commit.author?.date ?? "",
+								author: mapActor(c.author),
+							})),
+							files: files.map((f) => ({
+								sha: f.sha ?? null,
+								filename: f.filename,
+								status: f.status as PullFile["status"],
+								additions: f.additions,
+								deletions: f.deletions,
+								changes: f.changes,
+								patch: f.patch ?? null,
+								previousFilename: f.previous_filename ?? null,
+							})),
+							filesTruncated,
+						},
+						metadata: createGitHubResponseMetadata(200, {}),
+					};
+				},
+			});
+		} catch {
+			return null;
+		}
 	});
 
 // ---------------------------------------------------------------------------

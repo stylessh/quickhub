@@ -6,7 +6,7 @@ import {
 } from "@diffkit/ui/components/popover";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
 import { DetailSidebar } from "#/components/details/detail-sidebar";
 import {
 	type GitHubQueryScope,
@@ -94,18 +94,39 @@ function SidebarSectionHeader({
 	);
 }
 
-function PickerTrigger({ onPrefetch }: { onPrefetch?: () => void }) {
+const PickerTrigger = forwardRef<
+	HTMLButtonElement,
+	React.ButtonHTMLAttributes<HTMLButtonElement> & {
+		label: string;
+		onPrefetch?: () => void;
+	}
+>(function PickerTrigger(
+	{ label, onPrefetch, onMouseEnter, onFocus, className, ...props },
+	ref,
+) {
 	return (
 		<button
+			ref={ref}
 			type="button"
-			onMouseEnter={onPrefetch}
-			onFocus={onPrefetch}
-			className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+			aria-label={label}
+			onMouseEnter={(e) => {
+				onPrefetch?.();
+				onMouseEnter?.(e);
+			}}
+			onFocus={(e) => {
+				onPrefetch?.();
+				onFocus?.(e);
+			}}
+			className={cn(
+				"flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground",
+				className,
+			)}
+			{...props}
 		>
 			<PlusSignIcon size={14} strokeWidth={2} />
 		</button>
 	);
-}
+});
 
 function PickerSearchInput({
 	value,
@@ -222,9 +243,7 @@ function LabelsPicker({
 					}}
 				>
 					<PopoverTrigger asChild>
-						<span>
-							<PickerTrigger />
-						</span>
+						<PickerTrigger label="Add labels" />
 					</PopoverTrigger>
 					<PopoverContent align="end" className="w-64 p-0">
 						<PickerSearchInput
@@ -394,9 +413,7 @@ function AssigneesPicker({
 					}}
 				>
 					<PopoverTrigger asChild>
-						<span>
-							<PickerTrigger onPrefetch={prefetch} />
-						</span>
+						<PickerTrigger label="Add assignees" onPrefetch={prefetch} />
 					</PopoverTrigger>
 					<PopoverContent align="end" className="w-64 p-0">
 						<PickerSearchInput
@@ -612,9 +629,7 @@ function ReviewersPicker({
 					}}
 				>
 					<PopoverTrigger asChild>
-						<span>
-							<PickerTrigger onPrefetch={prefetch} />
-						</span>
+						<PickerTrigger label="Add reviewers" onPrefetch={prefetch} />
 					</PopoverTrigger>
 					<PopoverContent align="end" className="w-64 p-0">
 						<PickerSearchInput

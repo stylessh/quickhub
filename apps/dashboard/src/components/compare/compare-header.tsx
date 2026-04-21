@@ -65,16 +65,16 @@ export function CompareHeader({
 							{aheadBy === 1 ? "commit" : "commits"} ahead
 						</span>
 					) : null}
+					{aheadBy > 0 && behindBy > 0 ? (
+						<span className="text-muted-foreground/50">·</span>
+					) : null}
 					{behindBy > 0 ? (
-						<>
-							<span className="text-muted-foreground/50">·</span>
-							<span className="flex items-center gap-1">
-								<span className="tabular-nums font-medium text-foreground">
-									{behindBy}
-								</span>
-								{behindBy === 1 ? "commit" : "commits"} behind
+						<span className="flex items-center gap-1">
+							<span className="tabular-nums font-medium text-foreground">
+								{behindBy}
 							</span>
-						</>
+							{behindBy === 1 ? "commit" : "commits"} behind
+						</span>
 					) : null}
 					{status === "identical" ? <span>Branches are identical</span> : null}
 				</span>
