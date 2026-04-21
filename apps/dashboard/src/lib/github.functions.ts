@@ -8489,6 +8489,123 @@ export const getBranchComparison = createServerFn({ method: "GET" })
 	});
 
 // ---------------------------------------------------------------------------
+// Recent pushable branch — viewer's most recent push to a non-default branch
+// that has no open PR and is ahead of the default branch. Used to render the
+// "had recent pushes" banner on the repo overview.
+// ---------------------------------------------------------------------------
+
+export type RecentPushableBranch = {
+	branch: string;
+	pushedAt: string;
+	aheadBy: number;
+};
+
+type RecentPushableBranchInput = {
+	owner: string;
+	repo: string;
+};
+
+export const getRecentPushableBranch = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<RecentPushableBranchInput>)
+	.handler(async ({ data }): Promise<RecentPushableBranch | null> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) return null;
+
+		const repoCodeKey = githubRevalidationSignalKeys.repoCode(data);
+		const repoMetaKey = githubRevalidationSignalKeys.repoMeta(data);
+
+		try {
+			return await getOrRevalidateGitHubResource<RecentPushableBranch | null>({
+				userId: context.session.user.id,
+				resource: "repo.recentPushableBranch.v1",
+				params: data,
+				freshForMs: githubCachePolicy.detail.staleTimeMs,
+				signalKeys: [repoCodeKey, repoMetaKey],
+				namespaceKeys: [repoCodeKey, repoMetaKey],
+				cacheMode: "split",
+				fetcher: async () => {
+					const viewer = await getViewer(context);
+					if (!viewer.login) {
+						return {
+							kind: "success",
+							data: null,
+							metadata: createGitHubResponseMetadata(200, {}),
+						};
+					}
+
+					const overview = await context.octokit.rest.repos.get({
+						owner: data.owner,
+						repo: data.repo,
+					});
+					const defaultBranch = overview.data.default_branch;
+					if (!defaultBranch) {
+						return {
+							kind: "success",
+							data: null,
+							metadata: createGitHubResponseMetadata(200, {}),
+						};
+					}
+
+					const activities = await context.octokit.rest.repos.listActivities({
+						owner: data.owner,
+						repo: data.repo,
+						actor: viewer.login,
+						activity_type: "push",
+						time_period: "day",
+						per_page: 10,
+					});
+
+					const seen = new Set<string>();
+					for (const activity of activities.data) {
+						const ref = activity.ref;
+						if (!ref.startsWith("refs/heads/")) continue;
+						const branch = ref.slice("refs/heads/".length);
+						if (branch === defaultBranch) continue;
+						if (seen.has(branch)) continue;
+						seen.add(branch);
+
+						const existingPrs = await context.octokit.rest.pulls.list({
+							owner: data.owner,
+							repo: data.repo,
+							head: `${data.owner}:${branch}`,
+							state: "open",
+							per_page: 1,
+						});
+						if (existingPrs.data.length > 0) continue;
+
+						const comparison =
+							await context.octokit.rest.repos.compareCommitsWithBasehead({
+								owner: data.owner,
+								repo: data.repo,
+								basehead: `${defaultBranch}...${branch}`,
+								per_page: 1,
+							});
+						if (comparison.data.ahead_by === 0) continue;
+
+						return {
+							kind: "success",
+							data: {
+								branch,
+								pushedAt: activity.timestamp,
+								aheadBy: comparison.data.ahead_by,
+							},
+							metadata: createGitHubResponseMetadata(200, {}),
+						};
+					}
+
+					return {
+						kind: "success",
+						data: null,
+						metadata: createGitHubResponseMetadata(200, {}),
+					};
+				},
+			});
+		} catch {
+			return null;
+		}
+	});
+
+// ---------------------------------------------------------------------------
 // Compare detail (commits + files between two refs, for the compare page)
 // ---------------------------------------------------------------------------
 

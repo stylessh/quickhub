@@ -13,6 +13,7 @@ import { BranchComparisonBanner } from "./branch-comparison-banner";
 import { CodeExplorerToolbar } from "./code-explorer-toolbar";
 import { FileTree } from "./file-tree";
 import { LatestCommitBar } from "./latest-commit-bar";
+import { RecentPushBanner } from "./recent-push-banner";
 import { RepoActivityCards } from "./repo-activity-cards";
 import { RepoHeader } from "./repo-header";
 import { RepoMarkdownFiles } from "./repo-markdown-files";
@@ -106,6 +107,15 @@ export function RepoOverviewPage({
 								repo={repo}
 								scope={scope}
 								currentBranch={activeRef}
+								defaultBranch={repoData.defaultBranch}
+							/>
+						)}
+
+						{isDefaultBranch && (
+							<RecentPushBanner
+								owner={owner}
+								repo={repo}
+								scope={scope}
 								defaultBranch={repoData.defaultBranch}
 							/>
 						)}

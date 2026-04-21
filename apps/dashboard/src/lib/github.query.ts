@@ -25,6 +25,7 @@ import {
 	getPullStatus,
 	getPullsFromRepo,
 	getPullsFromUser,
+	getRecentPushableBranch,
 	getRefHeadCommit,
 	getRepoBranches,
 	getRepoCollaborators,
@@ -214,6 +215,11 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; base: string; head: string },
 		) => ["github", scope.userId, "repo", "compareDetail", input] as const,
+		recentPushableBranch: (
+			scope: GitHubQueryScope,
+			input: { owner: string; repo: string },
+		) =>
+			["github", scope.userId, "repo", "recentPushableBranch", input] as const,
 		tree: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; path: string },
@@ -722,6 +728,18 @@ export function githubCompareDetailQueryOptions(
 		staleTime: githubCachePolicy.detail.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		meta: tabPersistedMeta,
+	});
+}
+
+export function githubRecentPushableBranchQueryOptions(
+	scope: GitHubQueryScope,
+	input: { owner: string; repo: string },
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.repo.recentPushableBranch(scope, input),
+		queryFn: () => getRecentPushableBranch({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
 	});
 }
 
