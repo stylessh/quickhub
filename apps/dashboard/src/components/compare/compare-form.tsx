@@ -99,9 +99,10 @@ export function CompareForm({
 				<div className="inline-flex items-stretch overflow-hidden rounded-md shadow-xs">
 					<button
 						type="button"
+						disabled={submitting}
 						onClick={handleExecute}
 						className={cn(
-							"flex h-8 items-center gap-1.5 px-3 text-xs font-medium transition-[background-color,opacity]",
+							"flex h-8 items-center gap-1.5 px-3 text-xs font-medium transition-[background-color,opacity] disabled:pointer-events-none disabled:opacity-50",
 							draftMode
 								? "bg-surface-2 text-foreground hover:bg-surface-2/80"
 								: "bg-primary text-primary-foreground hover:bg-primary/90",

@@ -18,13 +18,14 @@ import {
 import { Spinner } from "@diffkit/ui/components/spinner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DetailSidebar } from "#/components/details/detail-sidebar";
 import { createIssue } from "#/lib/github.functions";
 import {
 	type GitHubQueryScope,
 	githubRepoCollaboratorsQueryOptions,
 	githubRepoLabelsQueryOptions,
+	githubRepoTemplateQueryOptions,
 } from "#/lib/github.query";
 import type { GitHubLabel, RepoCollaborator } from "#/lib/github.types";
 
@@ -68,6 +69,18 @@ function NewIssueForm({
 	const collaboratorsQuery = useQuery(
 		githubRepoCollaboratorsQueryOptions(scope, { owner, repo }),
 	);
+
+	const templateQuery = useQuery(
+		githubRepoTemplateQueryOptions(scope, { owner, repo, kind: "issue" }),
+	);
+	const templateAppliedRef = useRef(false);
+	useEffect(() => {
+		if (templateAppliedRef.current) return;
+		const template = templateQuery.data;
+		if (!template) return;
+		templateAppliedRef.current = true;
+		setBody((current) => (current ? current : template));
+	}, [templateQuery.data]);
 
 	const mentionCandidates: MentionCandidate[] = useMemo(
 		() =>

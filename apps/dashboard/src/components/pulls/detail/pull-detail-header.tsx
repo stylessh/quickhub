@@ -102,7 +102,7 @@ export function PullDetailHeader({
 							<Link
 								to="/$owner/$repo/review/$pullId"
 								params={{ owner, repo, pullId }}
-								className="rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 dark:bg-yellow-500 dark:text-black"
+								className="rounded-md bg-yellow-400 px-3 py-1 text-xs font-medium text-neutral-900 transition-colors hover:bg-yellow-400/90 dark:bg-yellow-500 dark:text-neutral-950 dark:hover:bg-yellow-500/90"
 							>
 								Review changes
 							</Link>

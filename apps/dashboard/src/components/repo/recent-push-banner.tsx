@@ -64,7 +64,7 @@ export function RecentPushBanner({
 			<CalloutAction>
 				<a
 					href={createPrUrl}
-					className="inline-flex items-center gap-1.5 rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 dark:bg-yellow-500 dark:text-black"
+					className="inline-flex items-center gap-1.5 rounded-md bg-yellow-400 px-3 py-1 text-xs font-medium text-neutral-900 transition-colors hover:bg-yellow-400/90 dark:bg-yellow-500 dark:text-neutral-950 dark:hover:bg-yellow-500/90"
 				>
 					<GitPullRequestIcon size={13} strokeWidth={2} />
 					Compare & pull request

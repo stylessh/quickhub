@@ -1,7 +1,7 @@
 import type { MentionCandidate } from "@diffkit/ui/components/markdown-editor";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	DetailPageSkeletonLayout,
 	StaggerItem,
@@ -12,6 +12,7 @@ import {
 	githubCompareDetailQueryOptions,
 	githubRepoCollaboratorsQueryOptions,
 	githubRepoOverviewQueryOptions,
+	githubRepoTemplateQueryOptions,
 	githubViewerQueryOptions,
 } from "#/lib/github.query";
 import type {
@@ -60,6 +61,10 @@ export function ComparePage({
 		...githubRepoCollaboratorsQueryOptions(scope, { owner, repo }),
 		enabled: hasMounted,
 	});
+	const templateQuery = useQuery({
+		...githubRepoTemplateQueryOptions(scope, { owner, repo, kind: "pr" }),
+		enabled: hasMounted && showForm,
+	});
 
 	const repoData = overviewQuery.data;
 	const viewer = viewerQuery.data ?? null;
@@ -84,6 +89,15 @@ export function ComparePage({
 
 	const [title, setTitle] = useState("");
 	const [body, setBody] = useState("");
+	const templateAppliedRef = useRef(false);
+	useEffect(() => {
+		if (!showForm) return;
+		if (templateAppliedRef.current) return;
+		const template = templateQuery.data;
+		if (!template) return;
+		templateAppliedRef.current = true;
+		setBody((current) => (current ? current : template));
+	}, [showForm, templateQuery.data]);
 	const [selectedLabels, setSelectedLabels] = useState<GitHubLabel[]>([]);
 	const [selectedAssignees, setSelectedAssignees] = useState<
 		RepoCollaborator[]
