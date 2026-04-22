@@ -3776,12 +3776,18 @@ async function computePullStatus(
 	type CheckRunItem = Awaited<
 		ReturnType<GitHubClient["rest"]["checks"]["listForRef"]>
 	>["data"]["check_runs"][number];
+	type CombinedStatusItem = Awaited<
+		ReturnType<GitHubClient["rest"]["repos"]["getCombinedStatusForRef"]>
+	>["data"]["statuses"][number];
+	type WorkflowRunItem = Awaited<
+		ReturnType<GitHubClient["rest"]["actions"]["listWorkflowRunsForRepo"]>
+	>["data"]["workflow_runs"][number];
 
 	const [
 		reviewsResponse,
 		allCheckRuns,
-		combinedStatusResponse,
-		workflowRunsResponse,
+		allCombinedStatuses,
+		allWorkflowRuns,
 		requiredContexts,
 		userContext,
 		oauthContext,
@@ -3806,22 +3812,34 @@ async function computePullStatus(
 				((payload as { check_runs?: CheckRunItem[] }).check_runs ??
 					[]) as CheckRunItem[],
 		}).catch((): CheckRunItem[] => []),
-		context.octokit.rest.repos
-			.getCombinedStatusForRef({
-				owner: data.owner,
-				repo: data.repo,
-				ref: pull.head.sha,
-				per_page: 100,
-			})
-			.catch(() => null),
-		context.octokit.rest.actions
-			.listWorkflowRunsForRepo({
-				owner: data.owner,
-				repo: data.repo,
-				head_sha: pull.head.sha,
-				per_page: 100,
-			})
-			.catch(() => null),
+		listPaginatedGitHubItems<CombinedStatusItem>({
+			label: `pull status combined statuses ${data.owner}/${data.repo}#${data.pullNumber}`,
+			request: (page) =>
+				context.octokit.rest.repos.getCombinedStatusForRef({
+					owner: data.owner,
+					repo: data.repo,
+					ref: pull.head.sha,
+					page,
+					per_page: 100,
+				}),
+			getItems: (payload) =>
+				((payload as { statuses?: CombinedStatusItem[] }).statuses ??
+					[]) as CombinedStatusItem[],
+		}).catch((): CombinedStatusItem[] => []),
+		listPaginatedGitHubItems<WorkflowRunItem>({
+			label: `pull status workflow runs ${data.owner}/${data.repo}#${data.pullNumber}`,
+			request: (page) =>
+				context.octokit.rest.actions.listWorkflowRunsForRepo({
+					owner: data.owner,
+					repo: data.repo,
+					head_sha: pull.head.sha,
+					page,
+					per_page: 100,
+				}),
+			getItems: (payload) =>
+				((payload as { workflow_runs?: WorkflowRunItem[] }).workflow_runs ??
+					[]) as WorkflowRunItem[],
+		}).catch((): WorkflowRunItem[] => []),
 		getRequiredStatusContexts(context, {
 			owner: data.owner,
 			repo: data.repo,
@@ -3873,8 +3891,17 @@ async function computePullStatus(
 	}));
 
 	// Commit statuses (e.g. CodeRabbit, CircleCI) — separate from Check Runs.
-	// getCombinedStatusForRef already returns the latest status per context.
-	const combinedStatuses = combinedStatusResponse?.data.statuses ?? [];
+	// GitHub's combined-status endpoint returns the latest status per context
+	// within each page; dedup across pages here in case the same context bleeds
+	// across page boundaries.
+	const combinedStatusesByContext = new Map<string, CombinedStatusItem>();
+	for (const status of allCombinedStatuses) {
+		const existing = combinedStatusesByContext.get(status.context);
+		if (!existing || status.id > existing.id) {
+			combinedStatusesByContext.set(status.context, status);
+		}
+	}
+	const combinedStatuses = Array.from(combinedStatusesByContext.values());
 	const checkRunNames = new Set(mappedCheckRuns.map((run) => run.name));
 	const mappedStatuses: PullCheckRun[] = combinedStatuses
 		.filter((status) => !checkRunNames.has(status.context))
@@ -3949,9 +3976,7 @@ async function computePullStatus(
 	//   - status=waiting              → deployment environment awaits approval
 	//   - status=action_required      → run is blocked pre-start (e.g. during re-run)
 	//   - status=completed, conclusion=action_required → first-time contributor gate
-	const pendingWorkflowApprovals: PullWorkflowApproval[] = (
-		workflowRunsResponse?.data.workflow_runs ?? []
-	)
+	const pendingWorkflowApprovals: PullWorkflowApproval[] = allWorkflowRuns
 		.filter(
 			(run) =>
 				run.status === "waiting" ||
@@ -6330,7 +6355,12 @@ export const rerunChecks = createServerFn({ method: "POST" })
 
 			for (const run of runsToRerun) {
 				if (run.app?.slug === "github-actions") {
-					const match = run.html_url?.match(/\/actions\/runs\/(\d+)\//);
+					// GHA check URLs can be `/actions/runs/{id}/job/{job_id}` most of
+					// the time, but also plain `/actions/runs/{id}`, with a `?query`, or
+					// occasionally shortened to `/runs/{id}` — accept all shapes.
+					const match = run.html_url?.match(
+						/\/(?:actions\/runs|runs)\/(\d+)(?:\/|$|\?)/,
+					);
 					if (match) {
 						const workflowRunId = Number(match[1]);
 						actionsRunIdByCheck.set(run.id, workflowRunId);
@@ -6442,16 +6472,25 @@ export type ApproveWorkflowRunsInput = PullFromRepoInput & {
 	workflowRunIds: number[];
 };
 
+export type ApproveWorkflowRunsResult = MutationResult & {
+	/** Number of workflow runs successfully approved. */
+	approved?: number;
+	/** Number of workflow runs that failed to approve. */
+	failed?: number;
+	/** True when at least one approval succeeded but some hit errors. */
+	partial?: boolean;
+};
+
 export const approveWorkflowRuns = createServerFn({ method: "POST" })
 	.inputValidator(identityValidator<ApproveWorkflowRunsInput>)
-	.handler(async ({ data }): Promise<MutationResult> => {
+	.handler(async ({ data }): Promise<ApproveWorkflowRunsResult> => {
 		const context = await getGitHubUserContextForRepository(data);
 		if (!context) {
 			return { ok: false, error: "Not authenticated" };
 		}
 
 		if (data.workflowRunIds.length === 0) {
-			return { ok: true };
+			return { ok: true, approved: 0, failed: 0 };
 		}
 
 		try {
@@ -6468,12 +6507,24 @@ export const approveWorkflowRuns = createServerFn({ method: "POST" })
 			const rejected = results.filter(
 				(r): r is PromiseRejectedResult => r.status === "rejected",
 			);
-			if (rejected.length === data.workflowRunIds.length) {
+			const approved = results.length - rejected.length;
+
+			if (approved === 0 && rejected.length > 0) {
 				return toMutationError("approve workflow runs", rejected[0].reason);
 			}
 
 			await bustPullDetailCaches(context.session.user.id, data);
-			return { ok: true };
+
+			if (rejected.length > 0) {
+				return {
+					ok: true,
+					approved,
+					failed: rejected.length,
+					partial: true,
+				};
+			}
+
+			return { ok: true, approved, failed: 0 };
 		} catch (error) {
 			return toMutationError("approve workflow runs", error);
 		}

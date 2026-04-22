@@ -881,6 +881,13 @@ function ChecksSection({
 				},
 			});
 			if (result.ok) {
+				if (result.partial) {
+					const approved = result.approved ?? 0;
+					const failed = result.failed ?? 0;
+					toast.warning(
+						`Approved ${approved} workflow${approved !== 1 ? "s" : ""}, but ${failed} failed`,
+					);
+				}
 				// Keep the button in loading state; the effect below resets it once the
 				// workflow_run webhook invalidates the cache and the pending list drains.
 				await queryClient.invalidateQueries({ queryKey: ["github"] });
