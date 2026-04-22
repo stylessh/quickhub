@@ -253,12 +253,87 @@ export type PullCheckRun = {
 	startedAt: string | null;
 	htmlUrl: string | null;
 	required: boolean;
+	workflowRunId: number | null;
 };
 
 export type PullWorkflowApproval = {
 	workflowRunId: number;
 	name: string;
 	event: string;
+};
+
+export type WorkflowRunPullRequestRef = {
+	number: number;
+	headRef: string;
+	baseRef: string;
+};
+
+export type WorkflowRun = {
+	id: number;
+	name: string | null;
+	displayTitle: string;
+	status: string;
+	conclusion: string | null;
+	event: string;
+	headBranch: string | null;
+	headSha: string;
+	runNumber: number;
+	runAttempt: number;
+	runStartedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+	htmlUrl: string;
+	path: string;
+	workflowId: number;
+	actor: GitHubActor | null;
+	triggeringActor: GitHubActor | null;
+	pullRequests: WorkflowRunPullRequestRef[];
+	viewerCanRerun: boolean;
+};
+
+export type WorkflowRunStep = {
+	number: number;
+	name: string;
+	status: string;
+	conclusion: string | null;
+	startedAt: string | null;
+	completedAt: string | null;
+};
+
+export type WorkflowRunJob = {
+	id: number;
+	runId: number;
+	name: string;
+	status: string;
+	conclusion: string | null;
+	startedAt: string | null;
+	completedAt: string | null;
+	htmlUrl: string | null;
+	labels: string[];
+	runnerName: string | null;
+	steps: WorkflowRunStep[];
+};
+
+export type WorkflowRunArtifact = {
+	id: number;
+	name: string;
+	sizeInBytes: number;
+	expired: boolean;
+	createdAt: string | null;
+	expiresAt: string | null;
+	archiveDownloadUrl: string;
+	digest: string | null;
+};
+
+export type WorkflowDefinitionJob = {
+	key: string;
+	needs: string[];
+	nameTemplate: string | null;
+	isMatrix: boolean;
+};
+
+export type WorkflowDefinition = {
+	jobs: WorkflowDefinitionJob[];
 };
 
 export type PullReview = {

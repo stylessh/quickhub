@@ -40,6 +40,7 @@ import { Route as ProtectedOwnerRepoIssuesIssueIdRouteImport } from './routes/_p
 import { Route as ProtectedOwnerRepoCompareSplatRouteImport } from './routes/_protected/$owner/$repo/compare.$'
 import { Route as ProtectedOwnerRepoCommitShaRouteImport } from './routes/_protected/$owner/$repo/commit.$sha'
 import { Route as ProtectedOwnerRepoBlobSplatRouteImport } from './routes/_protected/$owner/$repo/blob.$'
+import { Route as ProtectedOwnerRepoActionsRunsRunIdRouteImport } from './routes/_protected/$owner/$repo/actions.runs.$runId'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -205,6 +206,12 @@ const ProtectedOwnerRepoBlobSplatRoute =
     path: '/$owner/$repo/blob/$',
     getParentRoute: () => ProtectedRoute,
   } as any)
+const ProtectedOwnerRepoActionsRunsRunIdRoute =
+  ProtectedOwnerRepoActionsRunsRunIdRouteImport.update({
+    id: '/$owner/$repo/actions/runs/$runId',
+    path: '/$owner/$repo/actions/runs/$runId',
+    getParentRoute: () => ProtectedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/$': typeof SplatRoute
@@ -237,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
   '/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
+  '/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/$': typeof SplatRoute
@@ -268,6 +276,7 @@ export interface FileRoutesByTo {
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
   '/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesIndexRoute
+  '/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -302,6 +311,7 @@ export interface FileRoutesById {
   '/_protected/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/_protected/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
   '/_protected/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
+  '/_protected/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/review/$pullId'
     | '/$owner/$repo/tree/$'
     | '/$owner/$repo/issues/'
+    | '/$owner/$repo/actions/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$'
@@ -367,6 +378,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/review/$pullId'
     | '/$owner/$repo/tree/$'
     | '/$owner/$repo/issues'
+    | '/$owner/$repo/actions/runs/$runId'
   id:
     | '__root__'
     | '/$'
@@ -400,6 +412,7 @@ export interface FileRouteTypes {
     | '/_protected/$owner/$repo/review/$pullId'
     | '/_protected/$owner/$repo/tree/$'
     | '/_protected/$owner/$repo/issues/'
+    | '/_protected/$owner/$repo/actions/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -634,6 +647,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedOwnerRepoBlobSplatRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_protected/$owner/$repo/actions/runs/$runId': {
+      id: '/_protected/$owner/$repo/actions/runs/$runId'
+      path: '/$owner/$repo/actions/runs/$runId'
+      fullPath: '/$owner/$repo/actions/runs/$runId'
+      preLoaderRoute: typeof ProtectedOwnerRepoActionsRunsRunIdRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
   }
 }
 
@@ -670,6 +690,7 @@ interface ProtectedRouteChildren {
   ProtectedOwnerRepoReviewPullIdRoute: typeof ProtectedOwnerRepoReviewPullIdRoute
   ProtectedOwnerRepoTreeSplatRoute: typeof ProtectedOwnerRepoTreeSplatRoute
   ProtectedOwnerRepoIssuesIndexRoute: typeof ProtectedOwnerRepoIssuesIndexRoute
+  ProtectedOwnerRepoActionsRunsRunIdRoute: typeof ProtectedOwnerRepoActionsRunsRunIdRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
@@ -692,6 +713,8 @@ const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedOwnerRepoReviewPullIdRoute: ProtectedOwnerRepoReviewPullIdRoute,
   ProtectedOwnerRepoTreeSplatRoute: ProtectedOwnerRepoTreeSplatRoute,
   ProtectedOwnerRepoIssuesIndexRoute: ProtectedOwnerRepoIssuesIndexRoute,
+  ProtectedOwnerRepoActionsRunsRunIdRoute:
+    ProtectedOwnerRepoActionsRunsRunIdRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(

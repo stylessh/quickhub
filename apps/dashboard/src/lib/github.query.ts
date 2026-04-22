@@ -47,6 +47,10 @@ import {
 	getUserPinnedRepos,
 	getUserProfile,
 	getUserRepos,
+	getWorkflowDefinition,
+	getWorkflowRun,
+	listWorkflowRunArtifacts,
+	listWorkflowRunJobs,
 	type RepoTemplateKind,
 	searchCommandPaletteGitHub,
 } from "./github.functions";
@@ -120,6 +124,19 @@ export type IssueFromRepoQueryInput = {
 	owner: string;
 	repo: string;
 	issueNumber: number;
+};
+
+export type WorkflowRunQueryInput = {
+	owner: string;
+	repo: string;
+	runId: number;
+};
+
+export type WorkflowDefinitionQueryInput = {
+	owner: string;
+	repo: string;
+	path: string;
+	ref: string;
 };
 
 const persistedMeta = {
@@ -282,6 +299,28 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { all?: boolean; participating?: boolean },
 		) => ["github", scope.userId, "notifications", "list", input] as const,
+	},
+	actions: {
+		workflowRun: (scope: GitHubQueryScope, input: WorkflowRunQueryInput) =>
+			["github", scope.userId, "actions", "workflowRun", input] as const,
+		workflowRunJobs: (scope: GitHubQueryScope, input: WorkflowRunQueryInput) =>
+			["github", scope.userId, "actions", "workflowRunJobs", input] as const,
+		workflowRunArtifacts: (
+			scope: GitHubQueryScope,
+			input: WorkflowRunQueryInput,
+		) =>
+			[
+				"github",
+				scope.userId,
+				"actions",
+				"workflowRunArtifacts",
+				input,
+			] as const,
+		workflowDefinition: (
+			scope: GitHubQueryScope,
+			input: WorkflowDefinitionQueryInput,
+		) =>
+			["github", scope.userId, "actions", "workflowDefinition", input] as const,
 	},
 };
 
@@ -902,5 +941,57 @@ export function githubNotificationsQueryOptions(
 		staleTime: githubCachePolicy.list.staleTimeMs,
 		gcTime: githubCachePolicy.list.gcTimeMs,
 		meta: persistedMeta,
+	});
+}
+
+export function githubWorkflowRunQueryOptions(
+	scope: GitHubQueryScope,
+	input: WorkflowRunQueryInput,
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.actions.workflowRun(scope, input),
+		queryFn: () => getWorkflowRun({ data: input }),
+		staleTime: githubCachePolicy.workflowRun.staleTimeMs,
+		gcTime: githubCachePolicy.workflowRun.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubWorkflowRunJobsQueryOptions(
+	scope: GitHubQueryScope,
+	input: WorkflowRunQueryInput,
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.actions.workflowRunJobs(scope, input),
+		queryFn: () => listWorkflowRunJobs({ data: input }),
+		staleTime: githubCachePolicy.workflowRun.staleTimeMs,
+		gcTime: githubCachePolicy.workflowRun.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubWorkflowRunArtifactsQueryOptions(
+	scope: GitHubQueryScope,
+	input: WorkflowRunQueryInput,
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.actions.workflowRunArtifacts(scope, input),
+		queryFn: () => listWorkflowRunArtifacts({ data: input }),
+		staleTime: githubCachePolicy.workflowRun.staleTimeMs,
+		gcTime: githubCachePolicy.workflowRun.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubWorkflowDefinitionQueryOptions(
+	scope: GitHubQueryScope,
+	input: WorkflowDefinitionQueryInput,
+) {
+	return queryOptions({
+		queryKey: githubQueryKeys.actions.workflowDefinition(scope, input),
+		queryFn: () => getWorkflowDefinition({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
 	});
 }

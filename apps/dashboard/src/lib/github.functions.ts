@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { type Octokit as OctokitType, RequestError } from "octokit";
+import { parse as parseYaml } from "yaml";
 import { debug } from "./debug";
 import type {
 	BranchComparison,
@@ -60,6 +61,12 @@ import type {
 	TimelineEvent,
 	UserActivityEvent,
 	UserRepoSummary,
+	WorkflowDefinition,
+	WorkflowDefinitionJob,
+	WorkflowRun,
+	WorkflowRunArtifact,
+	WorkflowRunJob,
+	WorkflowRunStep,
 } from "./github.types";
 import {
 	buildGitHubAppAuthorizePath,
@@ -3879,17 +3886,31 @@ async function computePullStatus(
 	const checkRuns = deduplicateCheckRuns(allCheckRuns);
 	const requiredContextSet = new Set(requiredContexts);
 
-	const mappedCheckRuns: PullCheckRun[] = checkRuns.map((check) => ({
-		id: check.id,
-		name: check.name,
-		status: check.status,
-		conclusion: check.conclusion,
-		appAvatarUrl: check.app?.owner?.avatar_url ?? null,
-		outputTitle: check.output?.title ?? null,
-		startedAt: check.started_at ?? null,
-		htmlUrl: check.html_url ?? null,
-		required: requiredContextSet.has(check.name),
-	}));
+	const workflowRunIdByCheckSuiteId = new Map<number, number>();
+	for (const run of allWorkflowRuns) {
+		if (run.check_suite_id != null) {
+			workflowRunIdByCheckSuiteId.set(run.check_suite_id, run.id);
+		}
+	}
+
+	const mappedCheckRuns: PullCheckRun[] = checkRuns.map((check) => {
+		const suiteId = check.check_suite?.id ?? null;
+		return {
+			id: check.id,
+			name: check.name,
+			status: check.status,
+			conclusion: check.conclusion,
+			appAvatarUrl: check.app?.owner?.avatar_url ?? null,
+			outputTitle: check.output?.title ?? null,
+			startedAt: check.started_at ?? null,
+			htmlUrl: check.html_url ?? null,
+			required: requiredContextSet.has(check.name),
+			workflowRunId:
+				suiteId != null
+					? (workflowRunIdByCheckSuiteId.get(suiteId) ?? null)
+					: null,
+		};
+	});
 
 	// Commit statuses (e.g. CodeRabbit, CircleCI) — separate from Check Runs.
 	// GitHub's combined-status endpoint returns the latest status per context
@@ -3923,6 +3944,7 @@ async function computePullStatus(
 				startedAt: status.created_at ?? null,
 				htmlUrl: status.target_url ?? null,
 				required: requiredContextSet.has(status.context),
+				workflowRunId: null,
 			};
 		});
 
@@ -3943,6 +3965,7 @@ async function computePullStatus(
 			startedAt: null,
 			htmlUrl: null,
 			required: true,
+			workflowRunId: null,
 		}));
 
 	const combinedChecks: PullCheckRun[] = [
@@ -10019,3 +10042,303 @@ export const getRevalidationSignalTimestamps = createServerFn({
 			return getGitHubRevalidationSignals(data.signalKeys);
 		},
 	);
+
+export type WorkflowRunInput = {
+	owner: string;
+	repo: string;
+	runId: number;
+};
+
+type WorkflowRunRaw = Awaited<
+	ReturnType<GitHubClient["rest"]["actions"]["getWorkflowRun"]>
+>["data"];
+type WorkflowRunJobRaw = Awaited<
+	ReturnType<GitHubClient["rest"]["actions"]["listJobsForWorkflowRun"]>
+>["data"]["jobs"][number];
+type WorkflowRunStepRaw = NonNullable<WorkflowRunJobRaw["steps"]>[number];
+type WorkflowRunArtifactRaw = Awaited<
+	ReturnType<GitHubClient["rest"]["actions"]["listWorkflowRunArtifacts"]>
+>["data"]["artifacts"][number];
+
+function mapWorkflowRunStep(raw: WorkflowRunStepRaw): WorkflowRunStep {
+	return {
+		number: raw.number,
+		name: raw.name,
+		status: raw.status,
+		conclusion: raw.conclusion ?? null,
+		startedAt: raw.started_at ?? null,
+		completedAt: raw.completed_at ?? null,
+	};
+}
+
+function mapWorkflowRunJob(raw: WorkflowRunJobRaw): WorkflowRunJob {
+	return {
+		id: raw.id,
+		runId: raw.run_id,
+		name: raw.name,
+		status: raw.status,
+		conclusion: raw.conclusion ?? null,
+		startedAt: raw.started_at ?? null,
+		completedAt: raw.completed_at ?? null,
+		htmlUrl: raw.html_url ?? null,
+		labels: raw.labels ?? [],
+		runnerName: raw.runner_name ?? null,
+		steps: (raw.steps ?? []).map(mapWorkflowRunStep),
+	};
+}
+
+function mapWorkflowRunArtifact(
+	raw: WorkflowRunArtifactRaw,
+): WorkflowRunArtifact {
+	return {
+		id: raw.id,
+		name: raw.name,
+		sizeInBytes: raw.size_in_bytes,
+		expired: raw.expired,
+		createdAt: raw.created_at ?? null,
+		expiresAt: raw.expires_at ?? null,
+		archiveDownloadUrl: raw.archive_download_url,
+		digest: raw.digest ?? null,
+	};
+}
+
+function mapWorkflowRun(
+	raw: WorkflowRunRaw,
+	options: { viewerCanRerun: boolean },
+): WorkflowRun {
+	return {
+		id: raw.id,
+		name: raw.name ?? null,
+		displayTitle: raw.display_title ?? raw.name ?? `Run #${raw.run_number}`,
+		status: raw.status ?? "queued",
+		conclusion: raw.conclusion ?? null,
+		event: raw.event,
+		headBranch: raw.head_branch ?? null,
+		headSha: raw.head_sha,
+		runNumber: raw.run_number,
+		runAttempt: raw.run_attempt ?? 1,
+		runStartedAt: raw.run_started_at ?? null,
+		createdAt: raw.created_at,
+		updatedAt: raw.updated_at,
+		htmlUrl: raw.html_url,
+		path: raw.path,
+		workflowId: raw.workflow_id,
+		actor: mapActor(raw.actor),
+		triggeringActor: mapActor(raw.triggering_actor),
+		pullRequests: (raw.pull_requests ?? []).map((pr) => ({
+			number: pr.number,
+			headRef: pr.head?.ref ?? "",
+			baseRef: pr.base?.ref ?? "",
+		})),
+		viewerCanRerun: options.viewerCanRerun,
+	};
+}
+
+export const getWorkflowRun = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowRunInput>)
+	.handler(async ({ data }): Promise<WorkflowRun | null> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return null;
+		}
+
+		try {
+			const userContext = await getGitHubUserContextForRepository(data);
+			const [response, userPerms, appPerms] = await Promise.all([
+				context.octokit.rest.actions.getWorkflowRun({
+					owner: data.owner,
+					repo: data.repo,
+					run_id: data.runId,
+				}),
+				getRepositoryPermissions(userContext, data.owner, data.repo),
+				getRepositoryPermissions(context, data.owner, data.repo),
+			]);
+			const permissions = mergeRepositoryPermissions(userPerms, appPerms);
+			const viewerCanRerun =
+				permissions?.push === true || permissions?.admin === true;
+			return mapWorkflowRun(response.data, { viewerCanRerun });
+		} catch (error) {
+			if (error instanceof RequestError && error.status === 404) {
+				return null;
+			}
+			throw error;
+		}
+	});
+
+export const listWorkflowRunJobs = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowRunInput>)
+	.handler(async ({ data }): Promise<WorkflowRunJob[]> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return [];
+		}
+
+		try {
+			const items = await listPaginatedGitHubItems<WorkflowRunJobRaw>({
+				label: `workflow run jobs ${data.owner}/${data.repo}#${data.runId}`,
+				request: (page) =>
+					context.octokit.rest.actions.listJobsForWorkflowRun({
+						owner: data.owner,
+						repo: data.repo,
+						run_id: data.runId,
+						page,
+						per_page: 100,
+					}),
+				getItems: (payload) =>
+					((payload as { jobs?: WorkflowRunJobRaw[] }).jobs ??
+						[]) as WorkflowRunJobRaw[],
+			});
+			return items.map(mapWorkflowRunJob);
+		} catch (error) {
+			console.error("[listWorkflowRunJobs]", error);
+			return [];
+		}
+	});
+
+export const listWorkflowRunArtifacts = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowRunInput>)
+	.handler(async ({ data }): Promise<WorkflowRunArtifact[]> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return [];
+		}
+
+		try {
+			const items = await listPaginatedGitHubItems<WorkflowRunArtifactRaw>({
+				label: `workflow run artifacts ${data.owner}/${data.repo}#${data.runId}`,
+				request: (page) =>
+					context.octokit.rest.actions.listWorkflowRunArtifacts({
+						owner: data.owner,
+						repo: data.repo,
+						run_id: data.runId,
+						page,
+						per_page: 100,
+					}),
+				getItems: (payload) =>
+					((payload as { artifacts?: WorkflowRunArtifactRaw[] }).artifacts ??
+						[]) as WorkflowRunArtifactRaw[],
+			});
+			return items.map(mapWorkflowRunArtifact);
+		} catch (error) {
+			console.error("[listWorkflowRunArtifacts]", error);
+			return [];
+		}
+	});
+
+export const rerunWorkflowRun = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<WorkflowRunInput>)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubUserContextForRepository(data);
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.rest.actions.reRunWorkflow({
+				owner: data.owner,
+				repo: data.repo,
+				run_id: data.runId,
+			});
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("rerun workflow run", error);
+		}
+	});
+
+export const rerunFailedWorkflowJobs = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<WorkflowRunInput>)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubUserContextForRepository(data);
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.rest.actions.reRunWorkflowFailedJobs({
+				owner: data.owner,
+				repo: data.repo,
+				run_id: data.runId,
+			});
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("rerun failed workflow jobs", error);
+		}
+	});
+
+export type WorkflowDefinitionInput = {
+	owner: string;
+	repo: string;
+	path: string;
+	ref: string;
+};
+
+function parseWorkflowDefinition(yamlText: string): WorkflowDefinition | null {
+	let parsed: unknown;
+	try {
+		parsed = parseYaml(yamlText);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object") return null;
+	const jobsRaw = (parsed as { jobs?: unknown }).jobs;
+	if (!jobsRaw || typeof jobsRaw !== "object") return null;
+
+	const jobs: WorkflowDefinitionJob[] = [];
+	for (const [key, value] of Object.entries(
+		jobsRaw as Record<string, unknown>,
+	)) {
+		if (!value || typeof value !== "object") continue;
+		const v = value as {
+			needs?: string | string[];
+			name?: unknown;
+			strategy?: { matrix?: unknown };
+		};
+		const needs = Array.isArray(v.needs)
+			? v.needs.filter((n): n is string => typeof n === "string")
+			: typeof v.needs === "string"
+				? [v.needs]
+				: [];
+		const nameTemplate = typeof v.name === "string" ? v.name : null;
+		const isMatrix =
+			!!v.strategy && typeof v.strategy === "object" && "matrix" in v.strategy;
+		jobs.push({ key, needs, nameTemplate, isMatrix });
+	}
+	return { jobs };
+}
+
+export const getWorkflowDefinition = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowDefinitionInput>)
+	.handler(async ({ data }): Promise<WorkflowDefinition | null> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) return null;
+
+		try {
+			const response = await context.octokit.rest.repos.getContent({
+				owner: data.owner,
+				repo: data.repo,
+				path: data.path,
+				ref: data.ref,
+			});
+			const payload = response.data;
+			if (
+				!payload ||
+				Array.isArray(payload) ||
+				payload.type !== "file" ||
+				typeof payload.content !== "string"
+			) {
+				return null;
+			}
+			const encoding = payload.encoding ?? "base64";
+			const yamlText =
+				encoding === "base64"
+					? atob(payload.content.replace(/\n/g, ""))
+					: payload.content;
+			return parseWorkflowDefinition(yamlText);
+		} catch (error) {
+			if (error instanceof RequestError && error.status === 404) {
+				return null;
+			}
+			console.error("[getWorkflowDefinition]", error);
+			return null;
+		}
+	});
