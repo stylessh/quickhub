@@ -95,6 +95,10 @@ The GitHub App provides installation tokens for repo-scoped access, webhook deli
    - Pull request review
    - Pull request review comment
    - Pull request review thread
+   - Status
+   - Repository ruleset
+   - Branch protection rule
+   - Workflow run
 
 5. Click **Create GitHub App**
 

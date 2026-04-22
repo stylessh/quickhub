@@ -50,6 +50,7 @@ import {
 	lazy,
 	Suspense,
 	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -772,6 +773,8 @@ function ChecksSection({
 	const queryClient = useQueryClient();
 
 	const pendingTotal = checks.pending + checks.expected;
+	const approvalCount = pendingWorkflowApprovals.length;
+	const isApprovalOnly = checks.total === 0 && approvalCount > 0;
 
 	const checkStatus: StatusType = allChecksPassed
 		? "success"
@@ -779,21 +782,28 @@ function ChecksSection({
 			? "error"
 			: "pending";
 
-	const title = allChecksPassed
-		? "All checks have passed"
-		: hasCheckFailures
-			? `${checks.failed} failing check${checks.failed > 1 ? "s" : ""}`
-			: `${pendingTotal} pending check${pendingTotal > 1 ? "s" : ""}`;
+	const title = isApprovalOnly
+		? `${approvalCount} workflow${approvalCount !== 1 ? "s" : ""} awaiting approval`
+		: allChecksPassed
+			? "All checks have passed"
+			: hasCheckFailures
+				? `${checks.failed} failing check${checks.failed > 1 ? "s" : ""}`
+				: `${pendingTotal} pending check${pendingTotal > 1 ? "s" : ""}`;
 
-	const parts: string[] = [];
-	if (checks.skipped > 0) parts.push(`${checks.skipped} skipped`);
-	parts.push(
-		`${checks.passed} successful check${checks.passed !== 1 ? "s" : ""}`,
-	);
-	if (checks.pending > 0) parts.push(`${checks.pending} pending`);
-	if (checks.expected > 0) parts.push(`${checks.expected} expected`);
-	if (checks.failed > 0) parts.push(`${checks.failed} failing`);
-	const description = parts.join(", ");
+	let description: string;
+	if (isApprovalOnly) {
+		description = "Approve to run workflows and report checks.";
+	} else {
+		const parts: string[] = [];
+		if (checks.skipped > 0) parts.push(`${checks.skipped} skipped`);
+		parts.push(
+			`${checks.passed} successful check${checks.passed !== 1 ? "s" : ""}`,
+		);
+		if (checks.pending > 0) parts.push(`${checks.pending} pending`);
+		if (checks.expected > 0) parts.push(`${checks.expected} expected`);
+		if (checks.failed > 0) parts.push(`${checks.failed} failing`);
+		description = parts.join(", ");
+	}
 
 	// Group by status in display order: expected, failed, pending, skipped, passed
 	const groupedRuns = useMemo(() => {
@@ -833,7 +843,12 @@ function ChecksSection({
 			if (result.ok) {
 				const rerun = result.rerun ?? 0;
 				const skipped = result.skipped ?? 0;
-				if (rerun > 0 && skipped > 0) {
+				const failed = result.failed ?? 0;
+				if (result.partial) {
+					toast.warning(
+						`Re-running ${rerun} check${rerun !== 1 ? "s" : ""}, but ${failed} failed`,
+					);
+				} else if (rerun > 0 && skipped > 0) {
 					toast.success(
 						`Re-running ${rerun} check${rerun !== 1 ? "s" : ""} · ${skipped} not eligible`,
 					);
@@ -866,17 +881,31 @@ function ChecksSection({
 				},
 			});
 			if (result.ok) {
+				// Keep the button in loading state; the effect below resets it once the
+				// workflow_run webhook invalidates the cache and the pending list drains.
 				await queryClient.invalidateQueries({ queryKey: ["github"] });
 			} else {
 				toast.error(result.error);
 				checkPermissionWarning(result, `${owner}/${repo}`);
+				setIsApproving(false);
 			}
 		} catch {
 			toast.error("Failed to approve workflows");
-		} finally {
 			setIsApproving(false);
 		}
 	};
+
+	// Reset the approving state when the pending list drains (webhook arrived) or
+	// after a safety timeout to avoid a permanently-stuck spinner.
+	useEffect(() => {
+		if (!isApproving) return;
+		if (pendingWorkflowApprovals.length === 0) {
+			setIsApproving(false);
+			return;
+		}
+		const timer = setTimeout(() => setIsApproving(false), 30_000);
+		return () => clearTimeout(timer);
+	}, [isApproving, pendingWorkflowApprovals.length]);
 
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
@@ -1563,7 +1592,7 @@ function getCheckRunStatus(
 	run: PullCheckRun,
 ): "success" | "failure" | "pending" | "skipped" | "expected" {
 	if (run.status === "expected") return "expected";
-	if (run.status !== "completed") return "pending";
+	if (run.status !== "completed" || run.conclusion === null) return "pending";
 	if (run.conclusion === "success" || run.conclusion === "neutral")
 		return "success";
 	if (run.conclusion === "skipped" || run.conclusion === "stale")

@@ -3773,9 +3773,13 @@ async function computePullStatus(
 	data: PullFromRepoInput,
 	pull: RepoPullDetail,
 ): Promise<PullStatus> {
+	type CheckRunItem = Awaited<
+		ReturnType<GitHubClient["rest"]["checks"]["listForRef"]>
+	>["data"]["check_runs"][number];
+
 	const [
 		reviewsResponse,
-		checksResponse,
+		allCheckRuns,
 		combinedStatusResponse,
 		workflowRunsResponse,
 		requiredContexts,
@@ -3788,14 +3792,20 @@ async function computePullStatus(
 			pull_number: data.pullNumber,
 			per_page: 100,
 		}),
-		context.octokit.rest.checks
-			.listForRef({
-				owner: data.owner,
-				repo: data.repo,
-				ref: pull.head.sha,
-				per_page: 100,
-			})
-			.catch(() => null),
+		listPaginatedGitHubItems<CheckRunItem>({
+			label: `pull status check runs ${data.owner}/${data.repo}#${data.pullNumber}`,
+			request: (page) =>
+				context.octokit.rest.checks.listForRef({
+					owner: data.owner,
+					repo: data.repo,
+					ref: pull.head.sha,
+					page,
+					per_page: 100,
+				}),
+			getItems: (payload) =>
+				((payload as { check_runs?: CheckRunItem[] }).check_runs ??
+					[]) as CheckRunItem[],
+		}).catch((): CheckRunItem[] => []),
 		context.octokit.rest.repos
 			.getCombinedStatusForRef({
 				owner: data.owner,
@@ -3845,8 +3855,6 @@ async function computePullStatus(
 			author: mapActor(review.user),
 		});
 	}
-
-	const allCheckRuns = checksResponse?.data.check_runs ?? [];
 
 	// Deduplicate by name — keep the most recent run (highest id) per check name
 	const checkRuns = deduplicateCheckRuns(allCheckRuns);
@@ -6258,6 +6266,10 @@ export type RerunChecksResult = MutationResult & {
 	rerun?: number;
 	/** Number of checks GitHub refused to rerun because they're not eligible. */
 	skipped?: number;
+	/** Number of checks that failed for non-permissions reasons (real errors). */
+	failed?: number;
+	/** True when at least one rerun succeeded but some checks hit hard errors. */
+	partial?: boolean;
 };
 
 export const rerunChecks = createServerFn({ method: "POST" })
@@ -6396,11 +6408,30 @@ export const rerunChecks = createServerFn({ method: "POST" })
 				}
 			}
 
+			const failed = hardFailures.reduce((total, failure) => {
+				const taskIdx = results.indexOf(failure);
+				return (
+					total + (taskIdx >= 0 ? tasks[taskIdx].coveredCheckRunIds.length : 0)
+				);
+			}, 0);
+
 			if (rerun === 0 && hardFailures.length > 0) {
 				return toMutationError("rerun checks", hardFailures[0].reason);
 			}
 
+			// Cache is still worth busting — the checks that did rerun updated state.
 			await bustPullDetailCaches(context.session.user.id, data);
+
+			if (hardFailures.length > 0) {
+				return {
+					ok: true,
+					rerun,
+					skipped,
+					failed,
+					partial: true,
+				};
+			}
+
 			return { ok: true, rerun, skipped };
 		} catch (error) {
 			return toMutationError("rerun checks", error);
