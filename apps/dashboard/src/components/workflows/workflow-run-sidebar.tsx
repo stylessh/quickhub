@@ -65,10 +65,8 @@ export function WorkflowRunSidebar({
 										jobId: String(job.id),
 									}}
 									className={cn(
-										"-mx-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
-										isActive
-											? "bg-muted text-foreground"
-											: "text-foreground hover:bg-muted/60",
+										"-mx-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground",
+										isActive && "bg-surface-1 text-foreground",
 									)}
 								>
 									<CheckStateIcon state={state} />
