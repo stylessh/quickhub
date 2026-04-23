@@ -20,7 +20,9 @@ import {
 	memo,
 	Suspense,
 	useCallback,
+	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { CommentMoreMenu } from "#/components/details/comment-more-menu";
@@ -464,6 +466,11 @@ function InlineCommentForm({
 	mentionConfig?: MentionConfig;
 }) {
 	const [body, setBody] = useState("");
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+	useEffect(() => {
+		textareaRef.current?.focus();
+	}, []);
 
 	return (
 		<div className="mx-2 my-1 flex flex-col gap-2">
@@ -478,6 +485,7 @@ function InlineCommentForm({
 				placeholder="Leave a comment..."
 				compact
 				mentions={mentionConfig}
+				textareaRef={textareaRef}
 			/>
 			<div className="flex items-center justify-end gap-2">
 				<button
