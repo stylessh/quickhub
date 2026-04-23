@@ -73,6 +73,11 @@ export function RepoCommitsPage({
 	const repoData = overviewQuery.data;
 	const pathSegments = currentPath ? currentPath.split("/") : [];
 
+	const pathBreadcrumbs = pathSegments.map((segment, index) => ({
+		segment,
+		path: pathSegments.slice(0, index + 1).join("/"),
+	}));
+
 	const handleBranchChange = useCallback(
 		(branch: string) => {
 			if (branch === currentRef) return;
@@ -144,27 +149,34 @@ export function RepoCommitsPage({
 						<div className="min-w-0 space-y-1">
 							<h1 className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-lg font-semibold tracking-tight">
 								<Link
-									to="/$owner/$repo"
-									params={{ owner, repo }}
+									to="/$owner"
+									params={{ owner }}
 									className="text-accent-foreground transition-colors hover:underline"
 								>
 									{owner}
 								</Link>
 								<span className="text-muted-foreground">/</span>
 								<Link
-									to="/$owner/$repo"
-									params={{ owner, repo }}
+									to="/$owner/$repo/commits/$"
+									params={{ owner, repo, _splat: currentRef }}
 									className="text-accent-foreground transition-colors hover:underline"
 								>
 									{repo}
 								</Link>
-								{pathSegments.map((segment, index) => (
-									<span
-										key={pathSegments.slice(0, index + 1).join("/")}
-										className="contents"
-									>
+								{pathBreadcrumbs.map((breadcrumb) => (
+									<span key={breadcrumb.path} className="contents">
 										<span className="text-muted-foreground">/</span>
-										<span className="break-all">{segment}</span>
+										<Link
+											to="/$owner/$repo/commits/$"
+											params={{
+												owner,
+												repo,
+												_splat: `${currentRef}/${breadcrumb.path}`,
+											}}
+											className="break-all text-accent-foreground transition-colors hover:underline"
+										>
+											{breadcrumb.segment}
+										</Link>
 									</span>
 								))}
 							</h1>
