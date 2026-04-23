@@ -15,6 +15,7 @@ import {
 import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { useHasMounted } from "#/lib/use-has-mounted";
+import { usePageTitle } from "#/lib/use-page-title";
 import { useRegisterTab } from "#/lib/use-register-tab";
 import { IssueDetailActivitySection } from "./issue-detail-activity";
 import { getIssueStateConfig, IssueDetailHeader } from "./issue-detail-header";
@@ -88,6 +89,8 @@ export function IssueDetailContent({
 	const events = pageQuery.data?.events;
 	const commentPagination = pageQuery.data?.commentPagination;
 	const eventPagination = pageQuery.data?.eventPagination;
+
+	usePageTitle(issue?.title);
 
 	useRegisterTab(
 		registerTab && issue

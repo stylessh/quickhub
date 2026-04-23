@@ -51,6 +51,7 @@ import type {
 } from "#/lib/github.types";
 import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
+import { usePageTitle } from "#/lib/use-page-title";
 import { useRegisterTab } from "#/lib/use-register-tab";
 import { checkPermissionWarning } from "#/lib/warning-store";
 import type { ReviewDiffPaneHandle } from "./review-diff-pane";
@@ -219,6 +220,8 @@ export function ReviewPage() {
 		[filesQuery.data],
 	);
 	const reviewComments = reviewCommentsQuery.data ?? [];
+
+	usePageTitle(pr ? `Review: ${pr.title}` : null);
 
 	// ── Mention support for inline comment forms ──────────────────────
 	const [mentionActivated, setMentionActivated] = useState(false);

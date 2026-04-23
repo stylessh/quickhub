@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSeo, summarizeText, toAbsoluteUrl } from "./seo";
+import { buildSeo, formatPageTitle, summarizeText, toAbsoluteUrl } from "./seo";
 
 describe("summarizeText", () => {
 	it("strips basic markdown and whitespace", () => {
@@ -44,5 +44,15 @@ describe("buildSeo", () => {
 			property: "og:url",
 			content: "https://diffkit.app/pulls",
 		});
+	});
+});
+
+describe("formatPageTitle", () => {
+	it("adds the app name when it is missing", () => {
+		expect(formatPageTitle("Fix tab titles")).toBe("Fix tab titles | DiffKit");
+	});
+
+	it("does not duplicate the app name", () => {
+		expect(formatPageTitle("Inbox | DiffKit")).toBe("Inbox | DiffKit");
 	});
 });

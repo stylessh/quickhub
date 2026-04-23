@@ -17,6 +17,7 @@ import {
 import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { useHasMounted } from "#/lib/use-has-mounted";
+import { usePageTitle } from "#/lib/use-page-title";
 import { useRegisterTab } from "#/lib/use-register-tab";
 import { PullBodySection } from "./pull-body-section";
 import { PullDetailActivitySection } from "./pull-detail-activity";
@@ -122,6 +123,8 @@ export function PullDetailContent({
 	const eventPagination = pageQuery.data?.eventPagination;
 	const headRefDeleted = pageQuery.data?.headRefDeleted ?? false;
 	const viewer = viewerQuery.data ?? null;
+
+	usePageTitle(pr?.title);
 
 	useRegisterTab(
 		registerTab && pr
