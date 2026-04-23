@@ -18,6 +18,7 @@ import {
 	githubQueryKeys,
 	githubWorkflowJobLogsQueryOptions,
 } from "#/lib/github.query";
+import { getStepHashId } from "../step-hash";
 import {
 	NODE_HANDLE_CLASS,
 	STEP_LOG_HEIGHT,
@@ -149,7 +150,7 @@ export function StepLogNode({
 							runId: String(runId),
 							jobId: String(data.jobId),
 						}}
-						hash={`step-${data.stepNumber}`}
+						hash={getStepHashId(data.stepName, data.stepNumber)}
 						aria-label="Open job page"
 						className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					>

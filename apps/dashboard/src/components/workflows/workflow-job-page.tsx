@@ -35,6 +35,7 @@ import {
 	type LogEntry,
 } from "./graph/parse-step-log";
 import { StepLogContent } from "./graph/step-log-content";
+import { getStepHashId } from "./step-hash";
 import { WorkflowRunHeader } from "./workflow-run-header";
 import { WorkflowRunSidebar } from "./workflow-run-sidebar";
 
@@ -349,10 +350,6 @@ function JobFooter({
 	);
 }
 
-function getStepHashId(stepNumber: number) {
-	return `step-${stepNumber}`;
-}
-
 const JobStepRow = memo(function JobStepRow({
 	step,
 	rawLogs,
@@ -366,7 +363,7 @@ const JobStepRow = memo(function JobStepRow({
 	isLogsLoading: boolean;
 	isLogsError: boolean;
 }) {
-	const hashId = getStepHashId(step.number);
+	const hashId = getStepHashId(step.name, step.number);
 	const rowRef = useRef<HTMLDivElement>(null);
 	const [expanded, setExpanded] = useState(() => {
 		if (typeof window === "undefined") return false;
