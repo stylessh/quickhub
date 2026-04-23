@@ -4,6 +4,15 @@ import { cn } from "@diffkit/ui/lib/utils";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { countEntryLines, type LogEntry } from "./parse-step-log";
 
+function collectGroupIds(entries: LogEntry[], out: Set<string>): void {
+	for (const entry of entries) {
+		if (entry.kind === "group") {
+			out.add(entry.id);
+			collectGroupIds(entry.children, out);
+		}
+	}
+}
+
 export function StepLogContent({
 	entries,
 	totalLineCount,
@@ -24,7 +33,30 @@ export function StepLogContent({
 	scrollable?: boolean;
 }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+	const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+		const ids = new Set<string>();
+		collectGroupIds(entries, ids);
+		return ids;
+	});
+	const seenGroupIdsRef = useRef<Set<string>>(collapsed);
+
+	useEffect(() => {
+		const ids = new Set<string>();
+		collectGroupIds(entries, ids);
+		const newIds: string[] = [];
+		for (const id of ids) {
+			if (!seenGroupIdsRef.current.has(id)) {
+				newIds.push(id);
+				seenGroupIdsRef.current.add(id);
+			}
+		}
+		if (newIds.length === 0) return;
+		setCollapsed((prev) => {
+			const next = new Set(prev);
+			for (const id of newIds) next.add(id);
+			return next;
+		});
+	}, [entries]);
 
 	const toggleGroup = useCallback((id: string) => {
 		setCollapsed((prev) => {
