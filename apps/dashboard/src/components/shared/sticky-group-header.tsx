@@ -1,12 +1,16 @@
 import { ChevronRightIcon } from "@diffkit/icons";
 import { cn } from "@diffkit/ui/lib/utils";
+import { AnimatePresence, motion } from "motion/react";
 import {
 	type ComponentType,
+	type ReactNode,
 	type RefObject,
 	useEffect,
 	useRef,
 	useState,
 } from "react";
+
+const ACCORDION_ANIMATION_ITEM_LIMIT = 5;
 
 export function StickyGroupHeader({
 	sectionRef,
@@ -97,5 +101,54 @@ export function StickyGroupHeader({
 				{count}
 			</span>
 		</button>
+	);
+}
+
+export function StickyGroupContent({
+	children,
+	isCollapsed,
+	itemCount,
+}: {
+	children: ReactNode;
+	isCollapsed: boolean;
+	itemCount: number;
+}) {
+	if (itemCount === 0) {
+		return null;
+	}
+
+	const usesAccordionAnimation = itemCount < ACCORDION_ANIMATION_ITEM_LIMIT;
+
+	if (usesAccordionAnimation) {
+		return (
+			<AnimatePresence initial={false}>
+				{!isCollapsed && (
+					<motion.div
+						initial={{ height: 0, opacity: 0, y: -6 }}
+						animate={{ height: "auto", opacity: 1, y: 0 }}
+						exit={{ height: 0, opacity: 0, y: -6 }}
+						transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+						className="overflow-hidden"
+					>
+						{children}
+					</motion.div>
+				)}
+			</AnimatePresence>
+		);
+	}
+
+	return (
+		<AnimatePresence initial={false}>
+			{!isCollapsed && (
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={{ duration: 0.16, ease: "easeOut" }}
+				>
+					{children}
+				</motion.div>
+			)}
+		</AnimatePresence>
 	);
 }

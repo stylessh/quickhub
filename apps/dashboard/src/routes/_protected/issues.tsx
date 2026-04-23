@@ -1,7 +1,6 @@
 import { CommentIcon, InboxIcon, IssuesIcon } from "@diffkit/icons";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "motion/react";
 import {
 	type ComponentType,
 	memo,
@@ -19,7 +18,10 @@ import {
 } from "#/components/filters";
 import { IssueRow } from "#/components/issues/issue-row";
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
-import { StickyGroupHeader } from "#/components/shared/sticky-group-header";
+import {
+	StickyGroupContent,
+	StickyGroupHeader,
+} from "#/components/shared/sticky-group-header";
 import { useCollapsedGroups } from "#/lib/collapsible-groups-storage";
 import { countUniqueById } from "#/lib/count-unique";
 import {
@@ -259,23 +261,16 @@ const IssueGroup = memo(function IssueGroup({
 				isCollapsed={isGroupCollapsed}
 				onCollapsedChange={onCollapsedChange}
 			/>
-			<AnimatePresence initial={false}>
-				{!isGroupCollapsed && hasIssues && (
-					<motion.div
-						initial={{ height: 0, opacity: 0, y: -6 }}
-						animate={{ height: "auto", opacity: 1, y: 0 }}
-						exit={{ height: 0, opacity: 0, y: -6 }}
-						transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-						className="overflow-hidden"
-					>
-						<div className="mt-2 flex flex-col gap-1">
-							{issues.map((issue) => (
-								<IssueRow key={issue.id} issue={issue} />
-							))}
-						</div>
-					</motion.div>
-				)}
-			</AnimatePresence>
+			<StickyGroupContent
+				isCollapsed={isGroupCollapsed}
+				itemCount={issues.length}
+			>
+				<div className="mt-2 flex flex-col gap-1">
+					{issues.map((issue) => (
+						<IssueRow key={issue.id} issue={issue} />
+					))}
+				</div>
+			</StickyGroupContent>
 		</section>
 	);
 });

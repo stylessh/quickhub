@@ -7,7 +7,6 @@ import {
 } from "@diffkit/icons";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "motion/react";
 import {
 	type ComponentType,
 	memo,
@@ -25,7 +24,10 @@ import {
 } from "#/components/filters";
 import { DashboardContentLoading } from "#/components/layouts/dashboard-content-loading";
 import { PullRequestRow } from "#/components/pulls/pull-request-row";
-import { StickyGroupHeader } from "#/components/shared/sticky-group-header";
+import {
+	StickyGroupContent,
+	StickyGroupHeader,
+} from "#/components/shared/sticky-group-header";
 import { useCollapsedGroups } from "#/lib/collapsible-groups-storage";
 import { countUniqueById } from "#/lib/count-unique";
 import { githubMyPullsQueryOptions, githubQueryKeys } from "#/lib/github.query";
@@ -287,23 +289,16 @@ const PullGroup = memo(function PullGroup({
 				isCollapsed={isGroupCollapsed}
 				onCollapsedChange={onCollapsedChange}
 			/>
-			<AnimatePresence initial={false}>
-				{!isGroupCollapsed && hasPulls && (
-					<motion.div
-						initial={{ height: 0, opacity: 0, y: -6 }}
-						animate={{ height: "auto", opacity: 1, y: 0 }}
-						exit={{ height: 0, opacity: 0, y: -6 }}
-						transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-						className="overflow-hidden"
-					>
-						<div className="mt-2 flex flex-col gap-1">
-							{pulls.map((pull) => (
-								<PullRequestRow key={pull.id} pr={pull} scope={scope} />
-							))}
-						</div>
-					</motion.div>
-				)}
-			</AnimatePresence>
+			<StickyGroupContent
+				isCollapsed={isGroupCollapsed}
+				itemCount={pulls.length}
+			>
+				<div className="mt-2 flex flex-col gap-1">
+					{pulls.map((pull) => (
+						<PullRequestRow key={pull.id} pr={pull} scope={scope} />
+					))}
+				</div>
+			</StickyGroupContent>
 		</section>
 	);
 });
