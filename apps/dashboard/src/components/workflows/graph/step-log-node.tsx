@@ -1,6 +1,7 @@
 import { ExternalLinkIcon, RefreshCwIcon, XIcon } from "@diffkit/icons";
 import { Spinner } from "@diffkit/ui/components/spinner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	Handle,
 	type Node,
@@ -140,13 +141,19 @@ export function StepLogNode({
 							Live
 						</span>
 					) : null}
-					<a
-						href={`/${owner}/${repo}/actions/runs/${runId}/jobs/${data.jobId}`}
+					<Link
+						to="/$owner/$repo/actions/runs/$runId/jobs/$jobId"
+						params={{
+							owner,
+							repo,
+							runId: String(runId),
+							jobId: String(data.jobId),
+						}}
 						aria-label="Open job page"
 						className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					>
 						<ExternalLinkIcon size={13} strokeWidth={2} />
-					</a>
+					</Link>
 					<button
 						type="button"
 						onClick={handleRefresh}

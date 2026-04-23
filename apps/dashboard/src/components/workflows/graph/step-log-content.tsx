@@ -11,6 +11,7 @@ export function StepLogContent({
 	notAvailable,
 	hasLogs,
 	isStepLive,
+	scrollable = true,
 }: {
 	entries: LogEntry[];
 	totalLineCount: number;
@@ -18,6 +19,7 @@ export function StepLogContent({
 	notAvailable: boolean;
 	hasLogs: boolean;
 	isStepLive: boolean;
+	scrollable?: boolean;
 }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -33,20 +35,24 @@ export function StepLogContent({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-scrolls when line count changes
 	useEffect(() => {
-		if (!isStepLive) return;
+		if (!isStepLive || !scrollable) return;
 		const el = scrollRef.current;
 		if (!el) return;
 		el.scrollTop = el.scrollHeight;
-	}, [isStepLive, totalLineCount]);
+	}, [isStepLive, scrollable, totalLineCount]);
 
 	const lineNoWidth = useMemo(
 		() => `${Math.max(2, String(totalLineCount).length)}ch`,
 		[totalLineCount],
 	);
 
+	const statusClass = scrollable
+		? "flex flex-1 items-center justify-center text-muted-foreground text-xs"
+		: "flex items-center justify-center px-4 py-8 text-muted-foreground text-xs";
+
 	if (isLoading && !hasLogs) {
 		return (
-			<div className="flex flex-1 items-center justify-center text-muted-foreground text-xs">
+			<div className={statusClass}>
 				<Spinner className="mr-2 size-3.5" />
 				Loading logs…
 			</div>
@@ -55,7 +61,7 @@ export function StepLogContent({
 
 	if (notAvailable) {
 		return (
-			<div className="flex flex-1 items-center justify-center px-4 text-center text-muted-foreground text-xs">
+			<div className={cn(statusClass, "text-center")}>
 				Logs are not available yet. They become available once the job starts or
 				after completion.
 			</div>
@@ -64,7 +70,7 @@ export function StepLogContent({
 
 	if (!hasLogs) {
 		return (
-			<div className="flex flex-1 items-center justify-center px-4 text-center text-muted-foreground text-xs">
+			<div className={cn(statusClass, "text-center")}>
 				No log output for this step yet.
 			</div>
 		);
@@ -74,7 +80,10 @@ export function StepLogContent({
 	return (
 		<div
 			ref={scrollRef}
-			className="nowheel flex-1 overflow-auto bg-background px-3 py-2 font-mono text-[11px] leading-5"
+			className={cn(
+				"bg-background px-3 py-2 font-mono text-[11px] leading-5",
+				scrollable && "nowheel flex-1 overflow-auto",
+			)}
 		>
 			<EntryList
 				entries={entries}

@@ -397,7 +397,7 @@ const JobStepRow = memo(function JobStepRow({
 				/>
 			</button>
 			{expanded ? (
-				<div className="flex h-[420px] flex-col border-t bg-background">
+				<div className="border-t bg-background">
 					<StepLogContent
 						entries={entries}
 						totalLineCount={totalLineCount}
@@ -405,6 +405,7 @@ const JobStepRow = memo(function JobStepRow({
 						notAvailable={notAvailable}
 						hasLogs={hasLogs}
 						isStepLive={isStepLive}
+						scrollable={false}
 					/>
 				</div>
 			) : null}

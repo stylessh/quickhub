@@ -1,5 +1,6 @@
 import { ChevronDownIcon, ExternalLinkIcon } from "@diffkit/icons";
 import { cn } from "@diffkit/ui/lib/utils";
+import { Link } from "@tanstack/react-router";
 import { useCallback } from "react";
 import {
 	type CheckState,
@@ -102,14 +103,20 @@ export function JobCard({
 					/>
 					{onToggle ? <NodeChevron open={expanded} /> : null}
 				</button>
-				<a
-					href={`/${owner}/${repo}/actions/runs/${runId}/jobs/${job.id}`}
+				<Link
+					to="/$owner/$repo/actions/runs/$runId/jobs/$jobId"
+					params={{
+						owner,
+						repo,
+						runId: String(runId),
+						jobId: String(job.id),
+					}}
 					aria-label={`Open job ${name}`}
 					onClick={(e) => e.stopPropagation()}
 					className="absolute top-1.5 right-1.5 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover/card:opacity-100"
 				>
 					<ExternalLinkIcon size={12} strokeWidth={2} />
-				</a>
+				</Link>
 			</div>
 			{expanded ? (
 				<div className="flex flex-col border-t text-xs">
