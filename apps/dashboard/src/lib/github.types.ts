@@ -146,6 +146,7 @@ export type MyIssuesResult = {
 };
 
 export type CommandPaletteSearchResult = {
+	repos: UserRepoSummary[];
 	pulls: PullSummary[];
 	issues: IssueSummary[];
 };

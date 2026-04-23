@@ -408,9 +408,15 @@ type AuthenticatedUserRepo = Awaited<
 type ListForUserRepo = Awaited<
 	ReturnType<GitHubClient["rest"]["repos"]["listForUser"]>
 >["data"][number];
+type GetRepoItem = Awaited<
+	ReturnType<GitHubClient["rest"]["repos"]["get"]>
+>["data"];
+type SearchRepoItem = Awaited<
+	ReturnType<GitHubClient["rest"]["search"]["repos"]>
+>["data"]["items"][number];
 
 function mapGithubRestRepoToUserRepoSummary(
-	repo: AuthenticatedUserRepo | ListForUserRepo,
+	repo: AuthenticatedUserRepo | ListForUserRepo | GetRepoItem,
 ): UserRepoSummary {
 	const visibility: UserRepoSummary["visibility"] =
 		repo.visibility === "internal"
@@ -419,7 +425,7 @@ function mapGithubRestRepoToUserRepoSummary(
 				? "private"
 				: "public";
 	return {
-		id: repo.id!,
+		id: repo.id ?? 0,
 		name: repo.name ?? "",
 		fullName: repo.full_name ?? "",
 		description: repo.description ?? null,
@@ -432,6 +438,33 @@ function mapGithubRestRepoToUserRepoSummary(
 		visibility,
 		url: repo.html_url ?? "",
 		owner: repo.owner.login ?? "",
+	};
+}
+
+function mapGithubSearchRepoToUserRepoSummary(
+	repo: SearchRepoItem,
+): UserRepoSummary {
+	const visibility: UserRepoSummary["visibility"] =
+		repo.visibility === "internal"
+			? "internal"
+			: repo.visibility === "private" || repo.private
+				? "private"
+				: "public";
+
+	return {
+		id: repo.id ?? 0,
+		name: repo.name ?? "",
+		fullName: repo.full_name ?? "",
+		description: repo.description ?? null,
+		stars: repo.stargazers_count ?? 0,
+		forks: repo.forks_count ?? 0,
+		language: repo.language ?? null,
+		updatedAt: repo.updated_at ?? null,
+		createdAt: repo.created_at ?? null,
+		isPrivate: Boolean(repo.private),
+		visibility,
+		url: repo.html_url ?? "",
+		owner: repo.owner?.login ?? "",
 	};
 }
 
@@ -859,6 +892,7 @@ function normalizeCommandPaletteSearchQuery(query: string) {
 
 function emptyCommandPaletteSearchResult(): CommandPaletteSearchResult {
 	return {
+		repos: [],
 		pulls: [],
 		issues: [],
 	};
@@ -5629,41 +5663,61 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 		const login = viewer.login;
 
 		const perPage = clampCommandSearchPerPage(data.perPage);
-		const [pullItems, issueItems, accessIndex] = await Promise.all([
-			safeCommandPaletteSearch({
-				label: "pull requests",
-				fallback: [] as SearchItem[],
-				task: async (signal) => {
-					const response =
-						await context.octokit.rest.search.issuesAndPullRequests({
-							q: `${query} is:pr involves:${login} archived:false`,
+		const [repoItems, exactRepo, pullItems, issueItems, accessIndex] =
+			await Promise.all([
+				safeCommandPaletteSearch({
+					label: "repositories",
+					fallback: [] as SearchRepoItem[],
+					task: async (signal) => {
+						const response = await context.octokit.rest.search.repos({
+							q: `${query} archived:false`,
 							per_page: perPage,
 							sort: "updated",
 							order: "desc",
 							request: { signal },
 						});
-					return response.data.items;
-				},
-			}),
-			safeCommandPaletteSearch({
-				label: "issues",
-				fallback: [] as SearchItem[],
-				task: async (signal) => {
-					const response =
-						await context.octokit.rest.search.issuesAndPullRequests({
-							q: `${query} is:issue involves:${login} archived:false`,
-							per_page: perPage,
-							sort: "updated",
-							order: "desc",
-							request: { signal },
-						});
-					return response.data.items;
-				},
-			}),
-			getInstallationAccessIndex(context),
-		]);
+						return response.data.items;
+					},
+				}),
+				fetchCommandPaletteExactRepo(context, query),
+				safeCommandPaletteSearch({
+					label: "pull requests",
+					fallback: [] as SearchItem[],
+					task: async (signal) => {
+						const response =
+							await context.octokit.rest.search.issuesAndPullRequests({
+								q: `${query} is:pr involves:${login} archived:false`,
+								per_page: perPage,
+								sort: "updated",
+								order: "desc",
+								request: { signal },
+							});
+						return response.data.items;
+					},
+				}),
+				safeCommandPaletteSearch({
+					label: "issues",
+					fallback: [] as SearchItem[],
+					task: async (signal) => {
+						const response =
+							await context.octokit.rest.search.issuesAndPullRequests({
+								q: `${query} is:issue involves:${login} archived:false`,
+								per_page: perPage,
+								sort: "updated",
+								order: "desc",
+								request: { signal },
+							});
+						return response.data.items;
+					},
+				}),
+				getInstallationAccessIndex(context),
+			]);
 
 		return {
+			repos: mergeCommandPaletteRepos([
+				...(exactRepo ? [exactRepo] : []),
+				...repoItems.map(mapGithubSearchRepoToUserRepoSummary),
+			]),
 			pulls: filterItemsByInstallationAccess(
 				mapPullSearchItems(pullItems),
 				accessIndex,
@@ -5674,6 +5728,42 @@ export const searchCommandPaletteGitHub = createServerFn({ method: "GET" })
 			),
 		};
 	});
+
+async function fetchCommandPaletteExactRepo(
+	context: GitHubContext,
+	query: string,
+): Promise<UserRepoSummary | null> {
+	const match = query.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+	if (!match) {
+		return null;
+	}
+
+	return safeCommandPaletteSearch({
+		label: "exact repository",
+		fallback: null,
+		task: async (signal) => {
+			const response = await context.octokit.rest.repos.get({
+				owner: match[1],
+				repo: match[2],
+				request: { signal },
+			});
+			return mapGithubRestRepoToUserRepoSummary(response.data);
+		},
+	});
+}
+
+function mergeCommandPaletteRepos(repos: UserRepoSummary[]): UserRepoSummary[] {
+	const reposByFullName = new Map<string, UserRepoSummary>();
+
+	for (const repo of repos) {
+		const key = repo.fullName.toLowerCase();
+		if (!reposByFullName.has(key)) {
+			reposByFullName.set(key, repo);
+		}
+	}
+
+	return [...reposByFullName.values()];
+}
 
 function filterItemsByInstallationAccess<
 	T extends { repository: RepositoryRef },
@@ -9582,47 +9672,58 @@ export const getRepoCommits = createServerFn({ method: "GET" })
 		const perPage = Math.min(Math.max(data.perPage ?? 15, 1), 30);
 		const page = Math.max(data.page ?? 1, 1);
 
-		return getCachedGitHubRequest<
-			Awaited<ReturnType<GitHubClient["rest"]["repos"]["listCommits"]>>["data"],
-			RepoCommitsPage
-		>({
-			context,
-			resource: "repo.commits.v1",
-			params: { ...data, page, perPage },
-			freshForMs: githubCachePolicy.detail.staleTimeMs,
-			signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
-			namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
-			cacheMode: "split",
-			request: (headers) =>
-				context.octokit.rest.repos.listCommits({
-					owner: data.owner,
-					repo: data.repo,
-					sha: data.ref,
-					...(data.path ? { path: data.path } : {}),
-					page,
-					per_page: perPage,
-					headers,
+		try {
+			return await getCachedGitHubRequest<
+				Awaited<
+					ReturnType<GitHubClient["rest"]["repos"]["listCommits"]>
+				>["data"],
+				RepoCommitsPage
+			>({
+				context,
+				resource: "repo.commits.v1",
+				params: { ...data, page, perPage },
+				freshForMs: githubCachePolicy.detail.staleTimeMs,
+				signalKeys: [githubRevalidationSignalKeys.repoCode(data)],
+				namespaceKeys: [githubRevalidationSignalKeys.repoCode(data)],
+				cacheMode: "split",
+				request: (headers) =>
+					context.octokit.rest.repos.listCommits({
+						owner: data.owner,
+						repo: data.repo,
+						sha: data.ref,
+						...(data.path ? { path: data.path } : {}),
+						page,
+						per_page: perPage,
+						headers,
+					}),
+				mapData: (commits) => ({
+					commits: commits.map((commit) => ({
+						sha: commit.sha,
+						message: commit.commit.message,
+						date:
+							commit.commit.committer?.date ?? commit.commit.author?.date ?? "",
+						authorName:
+							commit.commit.author?.name ??
+							commit.commit.committer?.name ??
+							null,
+						author: commit.author
+							? {
+									login: commit.author.login,
+									avatarUrl: commit.author.avatar_url,
+									url: commit.author.html_url,
+									type: commit.author.type,
+								}
+							: null,
+					})),
+					nextPage: commits.length === perPage ? page + 1 : null,
 				}),
-			mapData: (commits) => ({
-				commits: commits.map((commit) => ({
-					sha: commit.sha,
-					message: commit.commit.message,
-					date:
-						commit.commit.committer?.date ?? commit.commit.author?.date ?? "",
-					authorName:
-						commit.commit.author?.name ?? commit.commit.committer?.name ?? null,
-					author: commit.author
-						? {
-								login: commit.author.login,
-								avatarUrl: commit.author.avatar_url,
-								url: commit.author.html_url,
-								type: commit.author.type,
-							}
-						: null,
-				})),
-				nextPage: commits.length === perPage ? page + 1 : null,
-			}),
-		}).catch(() => ({ commits: [], nextPage: null }));
+			});
+		} catch (error) {
+			if (error instanceof RequestError && error.status === 404) {
+				return { commits: [], nextPage: null };
+			}
+			throw error;
+		}
 	});
 
 // ---------------------------------------------------------------------------
