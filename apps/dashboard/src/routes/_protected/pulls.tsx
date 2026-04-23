@@ -271,6 +271,8 @@ const PullGroup = memo(function PullGroup({
 	scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
 	const sectionRef = useRef<HTMLElement>(null);
+	const hasPulls = pulls.length > 0;
+	const isGroupCollapsed = hasPulls && isCollapsed;
 
 	return (
 		<section
@@ -285,11 +287,11 @@ const PullGroup = memo(function PullGroup({
 				icon={icon}
 				title={title}
 				count={pulls.length}
-				isEmpty={pulls.length === 0}
-				isCollapsed={isCollapsed}
+				isEmpty={!hasPulls}
+				isCollapsed={isGroupCollapsed}
 				onCollapsedChange={onCollapsedChange}
 			/>
-			{!isCollapsed && pulls.length > 0 && (
+			{!isGroupCollapsed && hasPulls && (
 				<div className="mt-2 flex flex-col gap-1">
 					{pulls.map((pull) => (
 						<PullRequestRow key={pull.id} pr={pull} scope={scope} />
@@ -362,11 +364,12 @@ function StickyGroupHeader({
 			type="button"
 			ref={headerRef}
 			aria-expanded={!isCollapsed}
+			disabled={isEmpty}
 			onClick={() => onCollapsedChange(!isCollapsed)}
 			className={cn(
-				"sticky -top-8 z-10 flex w-full items-center justify-between gap-3 rounded-lg bg-surface-1 px-3 py-2 text-left transition-shadow hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+				"sticky -top-8 z-10 flex w-full items-center justify-between gap-3 rounded-lg bg-surface-1 px-3 py-2 text-left transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring enabled:hover:bg-surface-2",
 				isStickyActive && "shadow-lg",
-				isEmpty && "opacity-70",
+				isEmpty && "cursor-default opacity-70",
 			)}
 		>
 			<div className="flex min-w-0 items-center gap-2">
@@ -375,7 +378,8 @@ function StickyGroupHeader({
 					strokeWidth={2}
 					className={cn(
 						"shrink-0 text-muted-foreground transition-transform",
-						!isCollapsed && "rotate-90",
+						!isCollapsed && !isEmpty && "rotate-90",
+						isEmpty && "opacity-35",
 					)}
 				/>
 				<div className="shrink-0 text-muted-foreground">
