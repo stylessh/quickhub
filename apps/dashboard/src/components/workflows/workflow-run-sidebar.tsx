@@ -1,5 +1,7 @@
 import { FilterIcon } from "@diffkit/icons";
 import { Skeleton } from "@diffkit/ui/components/skeleton";
+import { cn } from "@diffkit/ui/lib/utils";
+import { Link } from "@tanstack/react-router";
 import {
 	CheckStateIcon,
 	getCheckState,
@@ -13,9 +15,17 @@ import type { WorkflowRunJob } from "#/lib/github.types";
 export function WorkflowRunSidebar({
 	jobs,
 	isJobsLoading,
+	owner,
+	repo,
+	runId,
+	activeJobId = null,
 }: {
 	jobs: WorkflowRunJob[];
 	isJobsLoading: boolean;
+	owner: string;
+	repo: string;
+	runId: number;
+	activeJobId?: number | null;
 }) {
 	return (
 		<DetailSidebar>
@@ -41,14 +51,27 @@ export function WorkflowRunSidebar({
 					) : (
 						jobs.map((job) => {
 							const state = getCheckState(job);
+							const isActive = job.id === activeJobId;
 							return (
-								<div
+								<Link
 									key={job.id}
-									className="-mx-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground"
+									to="/$owner/$repo/actions/runs/$runId/jobs/$jobId"
+									params={{
+										owner,
+										repo,
+										runId: String(runId),
+										jobId: String(job.id),
+									}}
+									className={cn(
+										"-mx-2 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+										isActive
+											? "bg-muted text-foreground"
+											: "text-foreground hover:bg-muted/60",
+									)}
 								>
 									<CheckStateIcon state={state} />
 									<span className="min-w-0 flex-1 truncate">{job.name}</span>
-								</div>
+								</Link>
 							);
 						})
 					)}

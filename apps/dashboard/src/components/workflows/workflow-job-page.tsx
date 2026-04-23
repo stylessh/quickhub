@@ -1,0 +1,442 @@
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	ExternalLinkIcon,
+	RefreshCwIcon,
+} from "@diffkit/icons";
+import { Skeleton } from "@diffkit/ui/components/skeleton";
+import { Spinner } from "@diffkit/ui/components/spinner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getRouteApi, Link } from "@tanstack/react-router";
+import { memo, useCallback, useMemo, useState } from "react";
+import {
+	CheckStateIcon,
+	getCheckState,
+} from "#/components/checks/check-state-icon";
+import {
+	DetailPageLayout,
+	DetailPageSkeletonLayout,
+	StaggerItem,
+} from "#/components/details/detail-page";
+import {
+	githubQueryKeys,
+	githubViewerQueryOptions,
+	githubWorkflowJobLogsQueryOptions,
+	githubWorkflowRunJobsQueryOptions,
+	githubWorkflowRunQueryOptions,
+} from "#/lib/github.query";
+import type { WorkflowRunJob, WorkflowRunStep } from "#/lib/github.types";
+import { useHasMounted } from "#/lib/use-has-mounted";
+import { useNow } from "#/lib/use-now";
+import { formatDuration } from "./graph/format";
+import {
+	countEntryLines,
+	extractStepLog,
+	type LogEntry,
+} from "./graph/parse-step-log";
+import { StepLogContent } from "./graph/step-log-content";
+import { WorkflowRunHeader } from "./workflow-run-header";
+import { WorkflowRunSidebar } from "./workflow-run-sidebar";
+
+const routeApi = getRouteApi(
+	"/_protected/$owner/$repo/actions/runs/$runId_/jobs/$jobId",
+);
+
+export function WorkflowJobPage() {
+	const { user } = routeApi.useRouteContext();
+	const { owner, repo, runId, jobId } = routeApi.useParams();
+
+	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
+	const runIdNum = Number(runId);
+	const jobIdNum = Number(jobId);
+	const hasMounted = useHasMounted();
+
+	useQuery({
+		...githubViewerQueryOptions(scope),
+		enabled: hasMounted,
+	});
+	const runQuery = useQuery({
+		...githubWorkflowRunQueryOptions(scope, {
+			owner,
+			repo,
+			runId: runIdNum,
+		}),
+		enabled: hasMounted,
+	});
+	const jobsQuery = useQuery({
+		...githubWorkflowRunJobsQueryOptions(scope, {
+			owner,
+			repo,
+			runId: runIdNum,
+		}),
+		enabled: hasMounted,
+	});
+
+	const job = useMemo(
+		() => jobsQuery.data?.find((j) => j.id === jobIdNum) ?? null,
+		[jobsQuery.data, jobIdNum],
+	);
+	const isJobLive = job ? job.status !== "completed" : true;
+
+	const logsQuery = useQuery({
+		...githubWorkflowJobLogsQueryOptions(scope, {
+			owner,
+			repo,
+			jobId: jobIdNum,
+		}),
+		enabled: hasMounted,
+		refetchInterval: isJobLive ? 4000 : false,
+	});
+
+	if (runQuery.error) throw runQuery.error;
+	const run = runQuery.data;
+	if (!run) return <WorkflowJobPageSkeleton />;
+
+	const jobs = jobsQuery.data ?? [];
+	const pullRequestNumber = run.pullRequests[0]?.number ?? null;
+
+	return (
+		<DetailPageLayout
+			main={
+				<>
+					<WorkflowRunHeader
+						owner={owner}
+						repo={repo}
+						run={run}
+						pullRequestNumber={pullRequestNumber}
+						scope={scope}
+					/>
+					<JobContainer
+						job={job}
+						isJobLoading={jobsQuery.isLoading}
+						rawLogs={logsQuery.data?.logs ?? null}
+						notAvailable={logsQuery.data?.notAvailable === true}
+						isLogsLoading={logsQuery.isLoading}
+						isLogsFetching={logsQuery.isFetching}
+						onRefresh={() => {
+							void logsQuery.refetch();
+						}}
+						owner={owner}
+						repo={repo}
+						runId={runIdNum}
+						jobId={jobIdNum}
+						scope={scope}
+					/>
+				</>
+			}
+			sidebar={
+				<WorkflowRunSidebar
+					jobs={jobs}
+					isJobsLoading={jobsQuery.isLoading}
+					owner={owner}
+					repo={repo}
+					runId={runIdNum}
+					activeJobId={jobIdNum}
+				/>
+			}
+		/>
+	);
+}
+
+function WorkflowJobPageSkeleton() {
+	return (
+		<DetailPageSkeletonLayout mainItemCount={2}>
+			<StaggerItem index={0}>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-3 w-40" />
+					<div className="flex items-start gap-3">
+						<Skeleton className="mt-1 size-5 rounded-full" />
+						<div className="flex min-w-0 flex-1 flex-col gap-2">
+							<Skeleton className="h-7 w-3/5" />
+							<Skeleton className="h-4 w-40" />
+						</div>
+					</div>
+				</div>
+			</StaggerItem>
+			<StaggerItem index={1}>
+				<div className="flex h-48 items-center rounded-xl border px-6">
+					<Skeleton className="h-12 w-52" />
+				</div>
+			</StaggerItem>
+		</DetailPageSkeletonLayout>
+	);
+}
+
+function JobContainer({
+	job,
+	isJobLoading,
+	rawLogs,
+	notAvailable,
+	isLogsLoading,
+	isLogsFetching,
+	onRefresh,
+	owner,
+	repo,
+	runId,
+	jobId,
+	scope,
+}: {
+	job: WorkflowRunJob | null;
+	isJobLoading: boolean;
+	rawLogs: string | null;
+	notAvailable: boolean;
+	isLogsLoading: boolean;
+	isLogsFetching: boolean;
+	onRefresh: () => void;
+	owner: string;
+	repo: string;
+	runId: number;
+	jobId: number;
+	scope: { userId: string };
+}) {
+	const queryClient = useQueryClient();
+	const handleInvalidateAll = useCallback(() => {
+		void queryClient.invalidateQueries({
+			queryKey: githubQueryKeys.actions.workflowJobLogs(scope, {
+				owner,
+				repo,
+				jobId,
+			}),
+		});
+		onRefresh();
+	}, [queryClient, scope, owner, repo, jobId, onRefresh]);
+
+	if (!job) {
+		return (
+			<div className="overflow-hidden rounded-xl border bg-surface-1">
+				<div className="flex items-center justify-center px-4 py-16 text-muted-foreground text-sm">
+					{isJobLoading ? (
+						<>
+							<Spinner className="mr-2 size-4" />
+							Loading job…
+						</>
+					) : (
+						"Job not found."
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="overflow-hidden rounded-xl border bg-surface-1">
+			<JobHeader
+				job={job}
+				isLogsFetching={isLogsFetching}
+				onRefresh={handleInvalidateAll}
+			/>
+			<div className="flex flex-col">
+				{job.steps.length === 0 ? (
+					<div className="px-4 py-6 text-muted-foreground text-xs">
+						No steps to display.
+					</div>
+				) : (
+					job.steps.map((step) => (
+						<JobStepRow
+							key={step.number}
+							step={step}
+							rawLogs={rawLogs}
+							notAvailable={notAvailable}
+							isLogsLoading={isLogsLoading}
+						/>
+					))
+				)}
+			</div>
+			<JobFooter owner={owner} repo={repo} runId={runId} />
+		</div>
+	);
+}
+
+function JobHeader({
+	job,
+	isLogsFetching,
+	onRefresh,
+}: {
+	job: WorkflowRunJob;
+	isLogsFetching: boolean;
+	onRefresh: () => void;
+}) {
+	return (
+		<div className="flex items-center justify-between gap-3 px-4 py-3">
+			<div className="flex min-w-0 flex-col gap-0.5">
+				<span className="truncate font-medium text-sm">{job.name}</span>
+				<JobHeaderTimingLabel
+					startedAt={job.startedAt}
+					completedAt={job.completedAt}
+				/>
+			</div>
+			<div className="flex items-center gap-1">
+				<button
+					type="button"
+					onClick={onRefresh}
+					disabled={isLogsFetching}
+					className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+					aria-label="Refresh logs"
+				>
+					{isLogsFetching ? (
+						<Spinner className="size-3.5" />
+					) : (
+						<RefreshCwIcon size={14} strokeWidth={2} />
+					)}
+				</button>
+				{job.htmlUrl ? (
+					<a
+						href={job.htmlUrl}
+						target="_blank"
+						rel="noreferrer"
+						aria-label="Open in GitHub"
+						className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					>
+						<ExternalLinkIcon size={14} strokeWidth={2} />
+					</a>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
+function JobHeaderTimingLabel({
+	startedAt,
+	completedAt,
+}: {
+	startedAt: string | null;
+	completedAt: string | null;
+}) {
+	if (!startedAt) {
+		return <span className="text-muted-foreground text-xs">Queued</span>;
+	}
+	if (completedAt) {
+		const text = formatDuration(startedAt, completedAt);
+		return (
+			<span className="text-muted-foreground text-xs">Ran for {text}</span>
+		);
+	}
+	return <LiveJobHeaderTimingLabel startedAt={startedAt} />;
+}
+
+function LiveJobHeaderTimingLabel({ startedAt }: { startedAt: string }) {
+	const now = useNow();
+	const text = formatDuration(startedAt, null, now);
+	return (
+		<span className="text-muted-foreground text-xs">Started {text} ago</span>
+	);
+}
+
+function JobFooter({
+	owner,
+	repo,
+	runId,
+}: {
+	owner: string;
+	repo: string;
+	runId: number;
+}) {
+	return (
+		<div className="border-t px-4 py-2 text-muted-foreground text-xs">
+			Part of workflow run{" "}
+			<Link
+				to="/$owner/$repo/actions/runs/$runId"
+				params={{ owner, repo, runId: String(runId) }}
+				className="text-foreground transition-colors hover:text-primary"
+			>
+				#{runId}
+			</Link>
+		</div>
+	);
+}
+
+const JobStepRow = memo(function JobStepRow({
+	step,
+	rawLogs,
+	notAvailable,
+	isLogsLoading,
+}: {
+	step: WorkflowRunStep;
+	rawLogs: string | null;
+	notAvailable: boolean;
+	isLogsLoading: boolean;
+}) {
+	const [expanded, setExpanded] = useState(false);
+
+	const entries = useMemo<LogEntry[]>(() => {
+		if (!rawLogs) return [];
+		return extractStepLog(rawLogs, step.name, {
+			startedAt: step.startedAt,
+			completedAt: step.completedAt,
+		}).entries;
+	}, [rawLogs, step.name, step.startedAt, step.completedAt]);
+
+	const totalLineCount = useMemo(() => countEntryLines(entries), [entries]);
+	const state = getCheckState({
+		status: step.status,
+		conclusion: step.conclusion,
+	});
+	const isStepLive = step.status !== "completed";
+	const hasLogs = entries.length > 0;
+
+	return (
+		<div className="border-t first:border-t-0">
+			<button
+				type="button"
+				onClick={() => setExpanded((v) => !v)}
+				aria-expanded={expanded}
+				className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-muted/40"
+			>
+				<span className="shrink-0 text-muted-foreground">
+					{expanded ? (
+						<ChevronDownIcon size={12} strokeWidth={2.5} />
+					) : (
+						<ChevronRightIcon size={12} strokeWidth={2.5} />
+					)}
+				</span>
+				<CheckStateIcon state={state} />
+				<span className="min-w-0 flex-1 truncate text-sm">{step.name}</span>
+				<StepDuration
+					startedAt={step.startedAt}
+					completedAt={step.completedAt}
+				/>
+			</button>
+			{expanded ? (
+				<div className="flex h-[420px] flex-col border-t bg-background">
+					<StepLogContent
+						entries={entries}
+						totalLineCount={totalLineCount}
+						isLoading={isLogsLoading}
+						notAvailable={notAvailable}
+						hasLogs={hasLogs}
+						isStepLive={isStepLive}
+					/>
+				</div>
+			) : null}
+		</div>
+	);
+});
+
+function StepDuration({
+	startedAt,
+	completedAt,
+}: {
+	startedAt: string | null;
+	completedAt: string | null;
+}) {
+	if (!startedAt) return null;
+	if (completedAt) {
+		const text = formatDuration(startedAt, completedAt);
+		return text ? (
+			<span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+				{text}
+			</span>
+		) : null;
+	}
+	return <LiveStepDuration startedAt={startedAt} />;
+}
+
+function LiveStepDuration({ startedAt }: { startedAt: string }) {
+	const now = useNow();
+	const text = formatDuration(startedAt, null, now);
+	return text ? (
+		<span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+			{text}
+		</span>
+	) : null;
+}

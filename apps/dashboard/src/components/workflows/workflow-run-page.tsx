@@ -128,7 +128,13 @@ export function WorkflowRunPage() {
 				</>
 			}
 			sidebar={
-				<WorkflowRunSidebar jobs={jobs} isJobsLoading={jobsQuery.isLoading} />
+				<WorkflowRunSidebar
+					jobs={jobs}
+					isJobsLoading={jobsQuery.isLoading}
+					owner={owner}
+					repo={repo}
+					runId={Number(runId)}
+				/>
 			}
 		/>
 	);
