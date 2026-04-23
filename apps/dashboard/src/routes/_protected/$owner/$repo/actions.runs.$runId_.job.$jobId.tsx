@@ -9,7 +9,7 @@ import {
 import { buildSeo, formatPageTitle } from "#/lib/seo";
 
 export const Route = createFileRoute(
-	"/_protected/$owner/$repo/actions/runs/$runId_/jobs/$jobId",
+	"/_protected/$owner/$repo/actions/runs/$runId_/job/$jobId",
 )({
 	ssr: false,
 	loader: ({ context, params }) => {

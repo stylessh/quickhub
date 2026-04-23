@@ -57,7 +57,7 @@ export function WorkflowRunSidebar({
 							return (
 								<Link
 									key={job.id}
-									to="/$owner/$repo/actions/runs/$runId/jobs/$jobId"
+									to="/$owner/$repo/actions/runs/$runId/job/$jobId"
 									params={{
 										owner,
 										repo,

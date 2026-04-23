@@ -106,7 +106,7 @@ export function JobCard({
 					{onToggle ? <NodeChevron open={expanded} /> : null}
 				</button>
 				<Link
-					to="/$owner/$repo/actions/runs/$runId/jobs/$jobId"
+					to="/$owner/$repo/actions/runs/$runId/job/$jobId"
 					params={{
 						owner,
 						repo,

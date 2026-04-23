@@ -8,7 +8,7 @@ import { Skeleton } from "@diffkit/ui/components/skeleton";
 import { Spinner } from "@diffkit/ui/components/spinner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	CheckStateIcon,
 	getCheckState,
@@ -39,7 +39,7 @@ import { WorkflowRunHeader } from "./workflow-run-header";
 import { WorkflowRunSidebar } from "./workflow-run-sidebar";
 
 const routeApi = getRouteApi(
-	"/_protected/$owner/$repo/actions/runs/$runId_/jobs/$jobId",
+	"/_protected/$owner/$repo/actions/runs/$runId_/job/$jobId",
 );
 
 export function WorkflowJobPage() {
@@ -349,6 +349,10 @@ function JobFooter({
 	);
 }
 
+function getStepHashId(stepNumber: number) {
+	return `step-${stepNumber}`;
+}
+
 const JobStepRow = memo(function JobStepRow({
 	step,
 	rawLogs,
@@ -362,7 +366,43 @@ const JobStepRow = memo(function JobStepRow({
 	isLogsLoading: boolean;
 	isLogsError: boolean;
 }) {
-	const [expanded, setExpanded] = useState(false);
+	const hashId = getStepHashId(step.number);
+	const rowRef = useRef<HTMLDivElement>(null);
+	const [expanded, setExpanded] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return window.location.hash.slice(1) === hashId;
+	});
+
+	useEffect(() => {
+		const syncFromHash = () => {
+			if (window.location.hash.slice(1) !== hashId) return;
+			setExpanded(true);
+			rowRef.current?.scrollIntoView({ block: "start" });
+		};
+		syncFromHash();
+		window.addEventListener("hashchange", syncFromHash);
+		return () => window.removeEventListener("hashchange", syncFromHash);
+	}, [hashId]);
+
+	const handleToggle = useCallback(() => {
+		setExpanded((prev) => {
+			const next = !prev;
+			if (typeof window === "undefined") return next;
+			const current = window.location.hash.slice(1);
+			if (next) {
+				if (current !== hashId) {
+					history.replaceState(null, "", `#${hashId}`);
+				}
+			} else if (current === hashId) {
+				history.replaceState(
+					null,
+					"",
+					window.location.pathname + window.location.search,
+				);
+			}
+			return next;
+		});
+	}, [hashId]);
 
 	const entries = useMemo<LogEntry[]>(() => {
 		if (!rawLogs) return [];
@@ -381,11 +421,16 @@ const JobStepRow = memo(function JobStepRow({
 	const hasLogs = entries.length > 0;
 
 	return (
-		<div className="border-t first:border-t-0">
+		<div
+			ref={rowRef}
+			id={hashId}
+			className="scroll-mt-4 border-t first:border-t-0"
+		>
 			<button
 				type="button"
-				onClick={() => setExpanded((v) => !v)}
+				onClick={handleToggle}
 				aria-expanded={expanded}
+				aria-controls={`${hashId}-content`}
 				className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-muted/40"
 			>
 				<span className="shrink-0 text-muted-foreground">
@@ -403,7 +448,7 @@ const JobStepRow = memo(function JobStepRow({
 				/>
 			</button>
 			{expanded ? (
-				<div className="border-t bg-background">
+				<div id={`${hashId}-content`} className="border-t bg-background">
 					<StepLogContent
 						entries={entries}
 						totalLineCount={totalLineCount}
