@@ -1962,7 +1962,7 @@ async function getInstallationAccessIndex(
 					const { installations, installationsAvailable, appUserOctokit } =
 						await getGitHubAppUserInstallations(context.session.user.id);
 
-					if (!installationsAvailable) {
+					if (!installationsAvailable || !appUserOctokit) {
 						debug(
 							"installation-access",
 							"app-user token unavailable, index not available (fail-open)",
@@ -2012,7 +2012,7 @@ async function getInstallationAccessIndex(
 								// this endpoint requires a GitHub App user-to-server token.
 								const repos = await listPaginatedGitHubItems({
 									request: (page) =>
-										appUserOctokit!.rest.apps.listInstallationReposForAuthenticatedUser(
+										appUserOctokit.rest.apps.listInstallationReposForAuthenticatedUser(
 											{
 												installation_id: installation.id,
 												page,
@@ -9985,7 +9985,10 @@ export const getNotifications = createServerFn({ method: "GET" })
 					};
 
 					// Fetch subject detail + comments (and reviews for PRs) in parallel
-					const subjectUrl = n.subject.url!;
+					const subjectUrl = n.subject.url;
+					if (!subjectUrl) {
+						return;
+					}
 					const commentsUrl = `${subjectUrl}/comments`;
 					const isPR = n.subject.type === "PullRequest";
 					const reviewsUrl = isPR ? `${subjectUrl}/reviews` : null;

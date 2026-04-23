@@ -25,6 +25,7 @@ import {
 	githubRepoTreeQueryOptions,
 } from "#/lib/github.query";
 import type { FileLastCommit } from "#/lib/github.types";
+import { CommitsLink } from "./commits-link";
 
 const IMAGE_EXTENSIONS = new Set([
 	"png",
@@ -537,15 +538,12 @@ function FileCommitBar({
 					</TooltipContent>
 				</Tooltip>
 				<span>{formatRelativeTime(commit.date)}</span>
-				<Link
-					to="/$owner/$repo/commits/$"
-					params={{ owner, repo, _splat: `${currentRef}/${path}` }}
-					aria-label="View commits"
-					className="-my-1 -mr-1 flex items-center gap-1 rounded-md px-2 py-1.5 font-medium text-foreground transition-colors hover:bg-surface-2"
-				>
-					<GitCommitIcon size={14} />
-					<span className="hidden sm:inline">History</span>
-				</Link>
+				<CommitsLink
+					owner={owner}
+					repo={repo}
+					currentRef={currentRef}
+					path={path}
+				/>
 			</div>
 		</div>
 	);

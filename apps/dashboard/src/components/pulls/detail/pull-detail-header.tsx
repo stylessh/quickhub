@@ -1,10 +1,10 @@
 import { FileIcon, GitCommitIcon, ReviewsIcon } from "@diffkit/icons";
-import { StatePill } from "@diffkit/ui/components/state-pill";
 import {
 	Callout,
 	CalloutAction,
 	CalloutContent,
 } from "@diffkit/ui/components/callout";
+import { StatePill } from "@diffkit/ui/components/state-pill";
 import {
 	Tooltip,
 	TooltipContent,
