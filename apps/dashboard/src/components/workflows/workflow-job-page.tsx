@@ -23,7 +23,9 @@ import {
 	githubViewerQueryOptions,
 	githubWorkflowJobLogsQueryOptions,
 	githubWorkflowRunJobsQueryOptions,
+	githubWorkflowRunLogsBundleQueryOptions,
 	githubWorkflowRunQueryOptions,
+	workflowZipJobName,
 } from "#/lib/github.query";
 import type { WorkflowRunJob, WorkflowRunStep } from "#/lib/github.types";
 import { useHasMounted } from "#/lib/use-has-mounted";
@@ -33,6 +35,7 @@ import {
 	countEntryLines,
 	extractStepLog,
 	type LogEntry,
+	parseStepLogContent,
 	splitLogLines,
 } from "./graph/parse-step-log";
 import { StepLogContent } from "./graph/step-log-content";
@@ -79,6 +82,7 @@ export function WorkflowJobPage() {
 		[jobsQuery.data, jobIdNum],
 	);
 	const isJobLive = job ? job.status !== "completed" : true;
+	const isRunCompleted = runQuery.data?.status === "completed";
 
 	const logsQuery = useQuery({
 		...githubWorkflowJobLogsQueryOptions(scope, {
@@ -86,9 +90,25 @@ export function WorkflowJobPage() {
 			repo,
 			jobId: jobIdNum,
 		}),
-		enabled: hasMounted,
+		enabled: hasMounted && !isRunCompleted,
 		refetchInterval: isJobLive ? 4000 : false,
 	});
+
+	const bundleQuery = useQuery({
+		...githubWorkflowRunLogsBundleQueryOptions(scope, {
+			owner,
+			repo,
+			runId: runIdNum,
+			attempt: runQuery.data?.runAttempt,
+		}),
+		enabled: hasMounted && isRunCompleted,
+	});
+
+	const bundleStepLogs = useMemo<Record<number, string> | null>(() => {
+		if (!job || !bundleQuery.data || bundleQuery.data.notAvailable) return null;
+		const key = workflowZipJobName(job.name);
+		return bundleQuery.data.jobs[key]?.steps ?? null;
+	}, [job, bundleQuery.data]);
 
 	if (runQuery.error) throw runQuery.error;
 	const run = runQuery.data;
@@ -112,13 +132,29 @@ export function WorkflowJobPage() {
 						job={job}
 						isJobLoading={jobsQuery.isLoading}
 						rawLogs={logsQuery.data?.logs ?? null}
-						notAvailable={logsQuery.data?.notAvailable === true}
-						isLogsLoading={logsQuery.isLoading}
-						isLogsError={logsQuery.isError}
-						isLogsFetching={logsQuery.isFetching}
+						bundleStepLogs={bundleStepLogs}
+						notAvailable={
+							isRunCompleted
+								? bundleQuery.data?.notAvailable === true
+								: logsQuery.data?.notAvailable === true
+						}
+						isLogsLoading={
+							isRunCompleted ? bundleQuery.isLoading : logsQuery.isLoading
+						}
+						isLogsError={
+							isRunCompleted ? bundleQuery.isError : logsQuery.isError
+						}
+						isLogsFetching={
+							isRunCompleted ? bundleQuery.isFetching : logsQuery.isFetching
+						}
 						onRefresh={() => {
-							void logsQuery.refetch();
+							if (isRunCompleted) {
+								void bundleQuery.refetch();
+							} else {
+								void logsQuery.refetch();
+							}
 						}}
+						isRunCompleted={isRunCompleted}
 						owner={owner}
 						repo={repo}
 						runId={runIdNum}
@@ -169,11 +205,13 @@ function JobContainer({
 	job,
 	isJobLoading,
 	rawLogs,
+	bundleStepLogs,
 	notAvailable,
 	isLogsLoading,
 	isLogsError,
 	isLogsFetching,
 	onRefresh,
+	isRunCompleted,
 	owner,
 	repo,
 	runId,
@@ -183,11 +221,13 @@ function JobContainer({
 	job: WorkflowRunJob | null;
 	isJobLoading: boolean;
 	rawLogs: string | null;
+	bundleStepLogs: Record<number, string> | null;
 	notAvailable: boolean;
 	isLogsLoading: boolean;
 	isLogsError: boolean;
 	isLogsFetching: boolean;
 	onRefresh: () => void;
+	isRunCompleted: boolean;
 	owner: string;
 	repo: string;
 	runId: number;
@@ -196,15 +236,34 @@ function JobContainer({
 }) {
 	const queryClient = useQueryClient();
 	const handleInvalidateAll = useCallback(() => {
-		void queryClient.invalidateQueries({
-			queryKey: githubQueryKeys.actions.workflowJobLogs(scope, {
-				owner,
-				repo,
-				jobId,
-			}),
-		});
+		if (isRunCompleted) {
+			void queryClient.invalidateQueries({
+				queryKey: githubQueryKeys.actions.workflowRunLogsBundle(scope, {
+					owner,
+					repo,
+					runId,
+				}),
+			});
+		} else {
+			void queryClient.invalidateQueries({
+				queryKey: githubQueryKeys.actions.workflowJobLogs(scope, {
+					owner,
+					repo,
+					jobId,
+				}),
+			});
+		}
 		onRefresh();
-	}, [queryClient, scope, owner, repo, jobId, onRefresh]);
+	}, [
+		queryClient,
+		scope,
+		owner,
+		repo,
+		runId,
+		jobId,
+		onRefresh,
+		isRunCompleted,
+	]);
 
 	const logLines = useMemo(
 		() => (rawLogs ? splitLogLines(rawLogs) : null),
@@ -245,6 +304,7 @@ function JobContainer({
 						<JobStepRow
 							key={step.number}
 							step={step}
+							stepLogText={bundleStepLogs?.[step.number] ?? null}
 							logLines={logLines}
 							notAvailable={notAvailable}
 							isLogsLoading={isLogsLoading}
@@ -358,12 +418,16 @@ function JobFooter({
 
 const JobStepRow = memo(function JobStepRow({
 	step,
+	stepLogText,
 	logLines,
 	notAvailable,
 	isLogsLoading,
 	isLogsError,
 }: {
 	step: WorkflowRunStep;
+	/** Authoritative per-step content from the run-level zip, when available. */
+	stepLogText: string | null;
+	/** Per-job text fallback (used when the bundle isn't available — typically in-progress runs). */
 	logLines: string[] | null;
 	notAvailable: boolean;
 	isLogsLoading: boolean;
@@ -408,12 +472,13 @@ const JobStepRow = memo(function JobStepRow({
 	}, [hashId]);
 
 	const entries = useMemo<LogEntry[]>(() => {
+		if (stepLogText != null) return parseStepLogContent(stepLogText);
 		if (!logLines) return [];
 		return extractStepLog(logLines, step.name, {
 			startedAt: step.startedAt,
 			completedAt: step.completedAt,
 		}).entries;
-	}, [logLines, step.name, step.startedAt, step.completedAt]);
+	}, [stepLogText, logLines, step.name, step.startedAt, step.completedAt]);
 
 	const totalLineCount = useMemo(() => countEntryLines(entries), [entries]);
 	const state = getCheckState({

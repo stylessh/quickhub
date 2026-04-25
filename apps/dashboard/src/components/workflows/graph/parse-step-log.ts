@@ -169,6 +169,42 @@ export function extractStepLog(
 	return { entries: [], strategy: "empty" };
 }
 
+/** Build nested LogEntry[] from a pre-extracted step's log text.
+ *  Used when the source already contains exactly one step's content (e.g. the
+ *  per-step `.txt` file from the run-level zip), so no name/time-range matching
+ *  is needed — we only collapse `##[group]…##[endgroup]` into nested entries. */
+export function parseStepLogContent(text: string): LogEntry[] {
+	if (!text) return [];
+	const root: LogEntry[] = [];
+	const stack: LogEntry[][] = [root];
+	let groupCounter = 0;
+	for (const raw of splitLogLines(text)) {
+		const { ts, text: line } = stripTimestamp(raw);
+		const gm = line.match(GROUP_RE);
+		if (gm) {
+			groupCounter++;
+			const group: LogEntry = {
+				kind: "group",
+				id: `g-${groupCounter}`,
+				name: gm[1] ?? "",
+				ts,
+				children: [],
+			};
+			const parent = stack[stack.length - 1];
+			if (parent) parent.push(group);
+			stack.push(group.children);
+			continue;
+		}
+		if (ENDGROUP_RE.test(line)) {
+			if (stack.length > 1) stack.pop();
+			continue;
+		}
+		const target = stack[stack.length - 1];
+		if (target) target.push({ kind: "line", ts, text: line });
+	}
+	return root;
+}
+
 export function collectGroupHeaders(fullLog: string, limit = 40): string[] {
 	const out: string[] = [];
 	for (const raw of fullLog.split(/\r?\n/)) {

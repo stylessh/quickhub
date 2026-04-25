@@ -331,6 +331,23 @@ export type WorkflowJobLogs = {
 	notAvailable: boolean;
 };
 
+/** Per-step logs derived from the run-level zip (`/actions/runs/{runId}/logs`).
+ *  Keys are step numbers as they appear in the API job's `steps[].number`. */
+export type WorkflowJobStepLogs = {
+	/** Sanitized job name as it appears inside the zip (slash/colon stripped, 90-char UTF-16 truncated). */
+	jobName: string;
+	/** Whole-job log file from the top-level `{ordinal}_{jobName}.txt` entry, when present. */
+	jobLog: string | null;
+	/** Per-step files keyed by step number (e.g. `1` → contents of `<jobName>/1_<stepName>.txt`). */
+	steps: Record<number, string>;
+};
+
+export type WorkflowRunLogsBundle = {
+	jobs: Record<string, WorkflowJobStepLogs>;
+	fetchedAt: string;
+	notAvailable: boolean;
+};
+
 export type WorkflowDefinitionJob = {
 	key: string;
 	needs: string[];

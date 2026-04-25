@@ -67,6 +67,7 @@ import type {
 	WorkflowRun,
 	WorkflowRunArtifact,
 	WorkflowRunJob,
+	WorkflowRunLogsBundle,
 	WorkflowRunStep,
 } from "./github.types";
 import {
@@ -10050,6 +10051,34 @@ export type WorkflowRunInput = {
 	runId: number;
 };
 
+export type WorkflowRunListStatus =
+	| "completed"
+	| "action_required"
+	| "cancelled"
+	| "failure"
+	| "neutral"
+	| "skipped"
+	| "stale"
+	| "success"
+	| "timed_out"
+	| "in_progress"
+	| "queued"
+	| "requested"
+	| "waiting"
+	| "pending";
+
+export type WorkflowRunsFromRepoInput = {
+	owner: string;
+	repo: string;
+	page?: number;
+	perPage?: number;
+	status?: WorkflowRunListStatus;
+	event?: string;
+	branch?: string;
+	actor?: string;
+	workflowId?: number;
+};
+
 type WorkflowRunRaw = Awaited<
 	ReturnType<GitHubClient["rest"]["actions"]["getWorkflowRun"]>
 >["data"];
@@ -10134,6 +10163,38 @@ function mapWorkflowRun(
 		viewerCanRerun: options.viewerCanRerun,
 	};
 }
+
+export const getWorkflowRunsForRepo = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowRunsFromRepoInput>)
+	.handler(async ({ data }): Promise<WorkflowRun[]> => {
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return [];
+		}
+
+		try {
+			const response =
+				await context.octokit.rest.actions.listWorkflowRunsForRepo({
+					owner: data.owner,
+					repo: data.repo,
+					page: clampPage(data.page),
+					per_page: clampPerPage(data.perPage),
+					status: data.status,
+					event: data.event,
+					branch: data.branch,
+					actor: data.actor,
+					workflow_id: data.workflowId,
+				});
+			return response.data.workflow_runs.map((raw) =>
+				mapWorkflowRun(raw as unknown as WorkflowRunRaw, {
+					viewerCanRerun: false,
+				}),
+			);
+		} catch (error) {
+			console.error("[getWorkflowRunsForRepo]", error);
+			return [];
+		}
+	});
 
 export const getWorkflowRun = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<WorkflowRunInput>)
@@ -10457,3 +10518,204 @@ export const getWorkflowJobLogs = createServerFn({ method: "GET" })
 		console.error(`${tag} all auth tiers failed`, lastError);
 		return null;
 	});
+
+export type WorkflowRunLogsBundleInput = {
+	owner: string;
+	repo: string;
+	runId: number;
+	attempt?: number;
+};
+
+const JOB_NAME_MAX_LENGTH = 90;
+
+/** Mirrors the gh CLI's `getJobNameForLogFilename`: strip path-illegal chars
+ *  and truncate to 90 UTF-16 code units (matches the C# server's `string.Length`,
+ *  which is also UTF-16 code units; JS strings index by the same units). */
+function sanitizeJobNameForZip(name: string): string {
+	const stripped = name.replace(/[/:]/g, "");
+	const truncated =
+		stripped.length > JOB_NAME_MAX_LENGTH
+			? stripped.slice(0, JOB_NAME_MAX_LENGTH)
+			: stripped;
+	return truncated.trim();
+}
+
+const STEP_FILE_RE = /^(.+?)\/(\d+)_.*\.txt$/;
+const JOB_FILE_RE = /^(-?\d+)_(.+)\.txt$/;
+
+function decodeZipEntry(bytes: Uint8Array): string {
+	return new TextDecoder("utf-8").decode(bytes);
+}
+
+async function unzipBundle(
+	bytes: Uint8Array,
+): Promise<Record<string, Uint8Array>> {
+	const { unzip } = await import("fflate");
+	return new Promise((resolve, reject) => {
+		unzip(
+			bytes,
+			{
+				filter: (file) => file.name.endsWith(".txt"),
+			},
+			(err, result) => {
+				if (err) reject(err);
+				else resolve(result);
+			},
+		);
+	});
+}
+
+function getOrCreateJobEntry(
+	jobs: WorkflowRunLogsBundle["jobs"],
+	jobName: string,
+): WorkflowRunLogsBundle["jobs"][string] {
+	const existing = jobs[jobName];
+	if (existing) return existing;
+	const entry = { jobName, jobLog: null, steps: {} };
+	jobs[jobName] = entry;
+	return entry;
+}
+
+async function parseLogsZip(
+	bytes: Uint8Array,
+): Promise<WorkflowRunLogsBundle["jobs"]> {
+	const files = await unzipBundle(bytes);
+	const jobs: WorkflowRunLogsBundle["jobs"] = {};
+	for (const path in files) {
+		const data = files[path];
+		if (!data) continue;
+		const stepMatch = path.match(STEP_FILE_RE);
+		if (stepMatch) {
+			const jobName = stepMatch[1] ?? "";
+			const stepNumber = Number(stepMatch[2]);
+			if (!Number.isFinite(stepNumber)) continue;
+			const entry = getOrCreateJobEntry(jobs, jobName);
+			entry.steps[stepNumber] = decodeZipEntry(data);
+			continue;
+		}
+		const jobMatch = path.match(JOB_FILE_RE);
+		if (jobMatch) {
+			const jobName = jobMatch[2] ?? "";
+			const entry = getOrCreateJobEntry(jobs, jobName);
+			entry.jobLog = decodeZipEntry(data);
+		}
+	}
+	return jobs;
+}
+
+export const getWorkflowRunLogsBundle = createServerFn({ method: "GET" })
+	.inputValidator(identityValidator<WorkflowRunLogsBundleInput>)
+	.handler(async ({ data }): Promise<WorkflowRunLogsBundle | null> => {
+		const repoInput = { owner: data.owner, repo: data.repo };
+		const tag = `[getWorkflowRunLogsBundle ${data.owner}/${data.repo}#${data.runId}${data.attempt ? `@${data.attempt}` : ""}]`;
+
+		const [appContext, userContext] = await Promise.all([
+			getGitHubContextForRepository(repoInput),
+			getGitHubUserContextForRepository(repoInput),
+		]);
+
+		const seen = new Set<unknown>();
+		const contexts = [
+			{ label: "app", ctx: appContext },
+			{ label: "user", ctx: userContext },
+		].filter(
+			(
+				entry,
+			): entry is { label: string; ctx: NonNullable<typeof entry.ctx> } => {
+				if (!entry.ctx) return false;
+				if (seen.has(entry.ctx.octokit)) return false;
+				seen.add(entry.ctx.octokit);
+				return true;
+			},
+		);
+
+		if (contexts.length === 0) {
+			console.warn(`${tag} no usable context`);
+			return null;
+		}
+
+		let lastError: unknown = null;
+		for (const { label, ctx } of contexts) {
+			try {
+				const attempt = data.attempt;
+				const response = await withGitHubOperationTimeout(
+					`${tag} ${label}`,
+					GITHUB_OPERATION_TIMEOUT_MS,
+					() =>
+						attempt
+							? ctx.octokit.request(
+									"GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs",
+									{
+										owner: data.owner,
+										repo: data.repo,
+										run_id: data.runId,
+										attempt_number: attempt,
+										request: { parseSuccessResponseBody: false },
+									},
+								)
+							: ctx.octokit.request(
+									"GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+									{
+										owner: data.owner,
+										repo: data.repo,
+										run_id: data.runId,
+										request: { parseSuccessResponseBody: false },
+									},
+								),
+				);
+				const body = response.data as unknown;
+				const buffer =
+					body instanceof ArrayBuffer
+						? body
+						: ArrayBuffer.isView(body)
+							? (body as ArrayBufferView).buffer.slice(
+									(body as ArrayBufferView).byteOffset,
+									(body as ArrayBufferView).byteOffset +
+										(body as ArrayBufferView).byteLength,
+								)
+							: body && typeof (body as Response).arrayBuffer === "function"
+								? await (body as Response).arrayBuffer()
+								: null;
+				if (!buffer) {
+					console.error(`${tag} unsupported response shape`, typeof body);
+					return null;
+				}
+				const bytes = new Uint8Array(buffer);
+				const jobs = await parseLogsZip(bytes);
+				console.log(`${tag} ok via ${label}`, {
+					status: response.status,
+					bytes: bytes.byteLength,
+					jobs: Object.keys(jobs).length,
+				});
+				return {
+					jobs,
+					fetchedAt: new Date().toISOString(),
+					notAvailable: false,
+				};
+			} catch (error) {
+				lastError = error;
+				const status = error instanceof RequestError ? error.status : undefined;
+				console.warn(`${tag} ${label} failed`, {
+					status,
+					message: error instanceof Error ? error.message : String(error),
+				});
+				if (status === 404 || status === 410) {
+					return {
+						jobs: {},
+						fetchedAt: new Date().toISOString(),
+						notAvailable: true,
+					};
+				}
+				if (status === 401 || status === 403) continue;
+				console.error(`${tag} unexpected error`, error);
+				return null;
+			}
+		}
+		console.error(`${tag} all auth tiers failed`, lastError);
+		return null;
+	});
+
+/** Build the zip-file job name for a given API job name. Exported for tests/clients. */
+export function workflowZipJobName(jobName: string): string {
+	return sanitizeJobNameForZip(jobName);
+}

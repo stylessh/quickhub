@@ -32,6 +32,7 @@ import { Route as ApiGithubAppCallbackRouteImport } from './routes/api/github/ap
 import { Route as ApiGithubAppAuthorizeRouteImport } from './routes/api/github/app/authorize'
 import { Route as ProtectedOwnerRepoPullsRouteImport } from './routes/_protected/$owner/$repo/pulls'
 import { Route as ProtectedOwnerRepoIssuesIndexRouteImport } from './routes/_protected/$owner/$repo/issues.index'
+import { Route as ProtectedOwnerRepoActionsIndexRouteImport } from './routes/_protected/$owner/$repo/actions.index'
 import { Route as ProtectedOwnerRepoTreeSplatRouteImport } from './routes/_protected/$owner/$repo/tree.$'
 import { Route as ProtectedOwnerRepoReviewPullIdRouteImport } from './routes/_protected/$owner/$repo/review.$pullId'
 import { Route as ProtectedOwnerRepoPullPullIdRouteImport } from './routes/_protected/$owner/$repo/pull.$pullId'
@@ -159,6 +160,12 @@ const ProtectedOwnerRepoIssuesIndexRoute =
     path: '/$owner/$repo/issues/',
     getParentRoute: () => ProtectedRoute,
   } as any)
+const ProtectedOwnerRepoActionsIndexRoute =
+  ProtectedOwnerRepoActionsIndexRouteImport.update({
+    id: '/$owner/$repo/actions/',
+    path: '/$owner/$repo/actions/',
+    getParentRoute: () => ProtectedRoute,
+  } as any)
 const ProtectedOwnerRepoTreeSplatRoute =
   ProtectedOwnerRepoTreeSplatRouteImport.update({
     id: '/$owner/$repo/tree/$',
@@ -250,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
+  '/$owner/$repo/actions/': typeof ProtectedOwnerRepoActionsIndexRoute
   '/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
   '/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
   '/$owner/$repo/actions/runs/$runId/job/$jobId': typeof ProtectedOwnerRepoActionsRunsRunIdJobJobIdRoute
@@ -283,6 +291,7 @@ export interface FileRoutesByTo {
   '/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
+  '/$owner/$repo/actions': typeof ProtectedOwnerRepoActionsIndexRoute
   '/$owner/$repo/issues': typeof ProtectedOwnerRepoIssuesIndexRoute
   '/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
   '/$owner/$repo/actions/runs/$runId/job/$jobId': typeof ProtectedOwnerRepoActionsRunsRunIdJobJobIdRoute
@@ -319,6 +328,7 @@ export interface FileRoutesById {
   '/_protected/$owner/$repo/pull/$pullId': typeof ProtectedOwnerRepoPullPullIdRoute
   '/_protected/$owner/$repo/review/$pullId': typeof ProtectedOwnerRepoReviewPullIdRoute
   '/_protected/$owner/$repo/tree/$': typeof ProtectedOwnerRepoTreeSplatRoute
+  '/_protected/$owner/$repo/actions/': typeof ProtectedOwnerRepoActionsIndexRoute
   '/_protected/$owner/$repo/issues/': typeof ProtectedOwnerRepoIssuesIndexRoute
   '/_protected/$owner/$repo/actions/runs/$runId': typeof ProtectedOwnerRepoActionsRunsRunIdRoute
   '/_protected/$owner/$repo/actions/runs/$runId_/job/$jobId': typeof ProtectedOwnerRepoActionsRunsRunIdJobJobIdRoute
@@ -355,6 +365,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/pull/$pullId'
     | '/$owner/$repo/review/$pullId'
     | '/$owner/$repo/tree/$'
+    | '/$owner/$repo/actions/'
     | '/$owner/$repo/issues/'
     | '/$owner/$repo/actions/runs/$runId'
     | '/$owner/$repo/actions/runs/$runId/job/$jobId'
@@ -388,6 +399,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/pull/$pullId'
     | '/$owner/$repo/review/$pullId'
     | '/$owner/$repo/tree/$'
+    | '/$owner/$repo/actions'
     | '/$owner/$repo/issues'
     | '/$owner/$repo/actions/runs/$runId'
     | '/$owner/$repo/actions/runs/$runId/job/$jobId'
@@ -423,6 +435,7 @@ export interface FileRouteTypes {
     | '/_protected/$owner/$repo/pull/$pullId'
     | '/_protected/$owner/$repo/review/$pullId'
     | '/_protected/$owner/$repo/tree/$'
+    | '/_protected/$owner/$repo/actions/'
     | '/_protected/$owner/$repo/issues/'
     | '/_protected/$owner/$repo/actions/runs/$runId'
     | '/_protected/$owner/$repo/actions/runs/$runId_/job/$jobId'
@@ -604,6 +617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedOwnerRepoIssuesIndexRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/_protected/$owner/$repo/actions/': {
+      id: '/_protected/$owner/$repo/actions/'
+      path: '/$owner/$repo/actions'
+      fullPath: '/$owner/$repo/actions/'
+      preLoaderRoute: typeof ProtectedOwnerRepoActionsIndexRouteImport
+      parentRoute: typeof ProtectedRoute
+    }
     '/_protected/$owner/$repo/tree/$': {
       id: '/_protected/$owner/$repo/tree/$'
       path: '/$owner/$repo/tree/$'
@@ -709,6 +729,7 @@ interface ProtectedRouteChildren {
   ProtectedOwnerRepoPullPullIdRoute: typeof ProtectedOwnerRepoPullPullIdRoute
   ProtectedOwnerRepoReviewPullIdRoute: typeof ProtectedOwnerRepoReviewPullIdRoute
   ProtectedOwnerRepoTreeSplatRoute: typeof ProtectedOwnerRepoTreeSplatRoute
+  ProtectedOwnerRepoActionsIndexRoute: typeof ProtectedOwnerRepoActionsIndexRoute
   ProtectedOwnerRepoIssuesIndexRoute: typeof ProtectedOwnerRepoIssuesIndexRoute
   ProtectedOwnerRepoActionsRunsRunIdRoute: typeof ProtectedOwnerRepoActionsRunsRunIdRoute
   ProtectedOwnerRepoActionsRunsRunIdJobJobIdRoute: typeof ProtectedOwnerRepoActionsRunsRunIdJobJobIdRoute
@@ -733,6 +754,7 @@ const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedOwnerRepoPullPullIdRoute: ProtectedOwnerRepoPullPullIdRoute,
   ProtectedOwnerRepoReviewPullIdRoute: ProtectedOwnerRepoReviewPullIdRoute,
   ProtectedOwnerRepoTreeSplatRoute: ProtectedOwnerRepoTreeSplatRoute,
+  ProtectedOwnerRepoActionsIndexRoute: ProtectedOwnerRepoActionsIndexRoute,
   ProtectedOwnerRepoIssuesIndexRoute: ProtectedOwnerRepoIssuesIndexRoute,
   ProtectedOwnerRepoActionsRunsRunIdRoute:
     ProtectedOwnerRepoActionsRunsRunIdRoute,
