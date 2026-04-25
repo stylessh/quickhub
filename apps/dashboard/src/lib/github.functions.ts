@@ -6279,6 +6279,35 @@ export const mergePullRequest = createServerFn({ method: "POST" })
 		}
 	});
 
+export type ReadyForReviewInput = PullFromRepoInput & {
+	/** GraphQL node id of the pull request (e.g. `PR_kwD...`). */
+	pullId: string;
+};
+
+export const markPullReadyForReview = createServerFn({ method: "POST" })
+	.inputValidator(identityValidator<ReadyForReviewInput>)
+	.handler(async ({ data }): Promise<MutationResult> => {
+		const context = await getGitHubUserContextForRepository(data);
+		if (!context) {
+			return { ok: false, error: "Not authenticated" };
+		}
+
+		try {
+			await context.octokit.graphql(
+				`mutation($pullRequestId: ID!) {
+					markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+						pullRequest { isDraft }
+					}
+				}`,
+				{ pullRequestId: data.pullId },
+			);
+			await bustPullDetailCaches(context.session.user.id, data);
+			return { ok: true };
+		} catch (error) {
+			return toMutationError("mark pull request as ready for review", error);
+		}
+	});
+
 export const deleteBranch = createServerFn({ method: "POST" })
 	.inputValidator(
 		identityValidator<{
