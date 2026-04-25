@@ -4,6 +4,7 @@ import {
 	githubViewerQueryOptions,
 	githubWorkflowJobLogsQueryOptions,
 	githubWorkflowRunJobsQueryOptions,
+	githubWorkflowRunLogsBundleQueryOptions,
 	githubWorkflowRunQueryOptions,
 } from "#/lib/github.query";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
@@ -18,20 +19,30 @@ export const Route = createFileRoute(
 		const scope = { userId: context.user.id };
 		const runInput = { owner: params.owner, repo: params.repo, runId };
 
-		void context.queryClient.prefetchQuery(
-			githubWorkflowRunQueryOptions(scope, runInput),
-		);
+		const runOptions = githubWorkflowRunQueryOptions(scope, runInput);
+		void context.queryClient.prefetchQuery(runOptions);
 		void context.queryClient.prefetchQuery(
 			githubWorkflowRunJobsQueryOptions(scope, runInput),
 		);
-		void context.queryClient.prefetchQuery(
-			githubWorkflowJobLogsQueryOptions(scope, {
-				owner: params.owner,
-				repo: params.repo,
-				jobId,
-			}),
-		);
 		void context.queryClient.prefetchQuery(githubViewerQueryOptions(scope));
+
+		const cachedRun = context.queryClient.getQueryData(runOptions.queryKey);
+		if (cachedRun?.status === "completed") {
+			void context.queryClient.prefetchQuery(
+				githubWorkflowRunLogsBundleQueryOptions(scope, {
+					...runInput,
+					attempt: cachedRun.runAttempt,
+				}),
+			);
+		} else {
+			void context.queryClient.prefetchQuery(
+				githubWorkflowJobLogsQueryOptions(scope, {
+					owner: params.owner,
+					repo: params.repo,
+					jobId,
+				}),
+			);
+		}
 
 		const jobsKey = githubWorkflowRunJobsQueryOptions(scope, runInput).queryKey;
 		const cachedJobs = context.queryClient.getQueryData(jobsKey);

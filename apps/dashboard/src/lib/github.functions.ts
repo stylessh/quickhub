@@ -10172,28 +10172,54 @@ export const getWorkflowRunsForRepo = createServerFn({ method: "GET" })
 			return [];
 		}
 
-		try {
-			const response =
-				await context.octokit.rest.actions.listWorkflowRunsForRepo({
+		const params = {
+			owner: data.owner,
+			repo: data.repo,
+			page: clampPage(data.page),
+			perPage: clampPerPage(data.perPage),
+			status: data.status,
+			event: data.event,
+			branch: data.branch,
+			actor: data.actor,
+			workflowId: data.workflowId,
+		};
+
+		return getCachedGitHubRequest<
+			Awaited<
+				ReturnType<GitHubClient["rest"]["actions"]["listWorkflowRunsForRepo"]>
+			>["data"],
+			WorkflowRun[]
+		>({
+			context,
+			resource: "actions.runs.repo",
+			params,
+			freshForMs: githubCachePolicy.list.staleTimeMs,
+			signalKeys: [
+				githubRevalidationSignalKeys.actionsRepo({
 					owner: data.owner,
 					repo: data.repo,
-					page: clampPage(data.page),
-					per_page: clampPerPage(data.perPage),
+				}),
+			],
+			request: (headers) =>
+				context.octokit.rest.actions.listWorkflowRunsForRepo({
+					owner: data.owner,
+					repo: data.repo,
+					page: params.page,
+					per_page: params.perPage,
 					status: data.status,
 					event: data.event,
 					branch: data.branch,
 					actor: data.actor,
 					workflow_id: data.workflowId,
-				});
-			return response.data.workflow_runs.map((raw) =>
-				mapWorkflowRun(raw as unknown as WorkflowRunRaw, {
-					viewerCanRerun: false,
+					headers,
 				}),
-			);
-		} catch (error) {
-			console.error("[getWorkflowRunsForRepo]", error);
-			return [];
-		}
+			mapData: (payload) =>
+				payload.workflow_runs.map((raw) =>
+					mapWorkflowRun(raw as unknown as WorkflowRunRaw, {
+						viewerCanRerun: false,
+					}),
+				),
+		});
 	});
 
 export const getWorkflowRun = createServerFn({ method: "GET" })
@@ -10204,27 +10230,49 @@ export const getWorkflowRun = createServerFn({ method: "GET" })
 			return null;
 		}
 
-		try {
-			const userContext = await getGitHubUserContextForRepository(data);
-			const [response, userPerms, appPerms] = await Promise.all([
-				context.octokit.rest.actions.getWorkflowRun({
+		const userContext = await getGitHubUserContextForRepository(data);
+		const [run, userPerms, appPerms] = await Promise.all([
+			getCachedGitHubRequest<WorkflowRunRaw, WorkflowRun | null>({
+				context,
+				resource: "actions.run",
+				params: {
 					owner: data.owner,
 					repo: data.repo,
-					run_id: data.runId,
-				}),
-				getRepositoryPermissions(userContext, data.owner, data.repo),
-				getRepositoryPermissions(context, data.owner, data.repo),
-			]);
-			const permissions = mergeRepositoryPermissions(userPerms, appPerms);
-			const viewerCanRerun =
-				permissions?.push === true || permissions?.admin === true;
-			return mapWorkflowRun(response.data, { viewerCanRerun });
-		} catch (error) {
-			if (error instanceof RequestError && error.status === 404) {
-				return null;
-			}
-			throw error;
-		}
+					runId: data.runId,
+				},
+				freshForMs: githubCachePolicy.workflowRun.staleTimeMs,
+				signalKeys: [
+					githubRevalidationSignalKeys.workflowRunEntity({
+						owner: data.owner,
+						repo: data.repo,
+						runId: data.runId,
+					}),
+				],
+				request: (headers) =>
+					context.octokit.rest.actions.getWorkflowRun({
+						owner: data.owner,
+						repo: data.repo,
+						run_id: data.runId,
+						headers,
+					}),
+				mapData: (payload) =>
+					mapWorkflowRun(payload, { viewerCanRerun: false }),
+			}).catch((error: unknown) => {
+				if (error instanceof RequestError && error.status === 404) {
+					return null;
+				}
+				throw error;
+			}),
+			getRepositoryPermissions(userContext, data.owner, data.repo),
+			getRepositoryPermissions(context, data.owner, data.repo),
+		]);
+
+		if (!run) return null;
+
+		const permissions = mergeRepositoryPermissions(userPerms, appPerms);
+		const viewerCanRerun =
+			permissions?.push === true || permissions?.admin === true;
+		return { ...run, viewerCanRerun };
 	});
 
 export const listWorkflowRunJobs = createServerFn({ method: "GET" })
@@ -10236,21 +10284,41 @@ export const listWorkflowRunJobs = createServerFn({ method: "GET" })
 		}
 
 		try {
-			const items = await listPaginatedGitHubItems<WorkflowRunJobRaw>({
-				label: `workflow run jobs ${data.owner}/${data.repo}#${data.runId}`,
-				request: (page) =>
-					context.octokit.rest.actions.listJobsForWorkflowRun({
+			return await getCachedPaginatedGitHubRequest<
+				WorkflowRunJobRaw,
+				WorkflowRunJob[]
+			>({
+				context,
+				resource: "actions.run.jobs",
+				params: {
+					owner: data.owner,
+					repo: data.repo,
+					runId: data.runId,
+				},
+				freshForMs: githubCachePolicy.workflowRun.staleTimeMs,
+				signalKeys: [
+					githubRevalidationSignalKeys.workflowRunEntity({
 						owner: data.owner,
 						repo: data.repo,
-						run_id: data.runId,
-						page,
-						per_page: 100,
+						runId: data.runId,
 					}),
-				getItems: (payload) =>
-					((payload as { jobs?: WorkflowRunJobRaw[] }).jobs ??
-						[]) as WorkflowRunJobRaw[],
+				],
+				request: async (page) => {
+					const response =
+						await context.octokit.rest.actions.listJobsForWorkflowRun({
+							owner: data.owner,
+							repo: data.repo,
+							run_id: data.runId,
+							page,
+							per_page: 100,
+						});
+					return {
+						...response,
+						data: response.data.jobs ?? [],
+					};
+				},
+				mapData: (items) => items.map(mapWorkflowRunJob),
 			});
-			return items.map(mapWorkflowRunJob);
 		} catch (error) {
 			console.error("[listWorkflowRunJobs]", error);
 			return [];
@@ -10266,21 +10334,41 @@ export const listWorkflowRunArtifacts = createServerFn({ method: "GET" })
 		}
 
 		try {
-			const items = await listPaginatedGitHubItems<WorkflowRunArtifactRaw>({
-				label: `workflow run artifacts ${data.owner}/${data.repo}#${data.runId}`,
-				request: (page) =>
-					context.octokit.rest.actions.listWorkflowRunArtifacts({
+			return await getCachedPaginatedGitHubRequest<
+				WorkflowRunArtifactRaw,
+				WorkflowRunArtifact[]
+			>({
+				context,
+				resource: "actions.run.artifacts",
+				params: {
+					owner: data.owner,
+					repo: data.repo,
+					runId: data.runId,
+				},
+				freshForMs: githubCachePolicy.workflowRun.staleTimeMs,
+				signalKeys: [
+					githubRevalidationSignalKeys.workflowRunEntity({
 						owner: data.owner,
 						repo: data.repo,
-						run_id: data.runId,
-						page,
-						per_page: 100,
+						runId: data.runId,
 					}),
-				getItems: (payload) =>
-					((payload as { artifacts?: WorkflowRunArtifactRaw[] }).artifacts ??
-						[]) as WorkflowRunArtifactRaw[],
+				],
+				request: async (page) => {
+					const response =
+						await context.octokit.rest.actions.listWorkflowRunArtifacts({
+							owner: data.owner,
+							repo: data.repo,
+							run_id: data.runId,
+							page,
+							per_page: 100,
+						});
+					return {
+						...response,
+						data: response.data.artifacts ?? [],
+					};
+				},
+				mapData: (items) => items.map(mapWorkflowRunArtifact),
 			});
-			return items.map(mapWorkflowRunArtifact);
 		} catch (error) {
 			console.error("[listWorkflowRunArtifacts]", error);
 			return [];
@@ -10603,116 +10691,154 @@ async function parseLogsZip(
 	return jobs;
 }
 
+async function fetchWorkflowRunLogsBundleUncached(
+	data: WorkflowRunLogsBundleInput,
+): Promise<WorkflowRunLogsBundle | null> {
+	const repoInput = { owner: data.owner, repo: data.repo };
+	const tag = `[getWorkflowRunLogsBundle ${data.owner}/${data.repo}#${data.runId}${data.attempt ? `@${data.attempt}` : ""}]`;
+
+	const [appContext, userContext] = await Promise.all([
+		getGitHubContextForRepository(repoInput),
+		getGitHubUserContextForRepository(repoInput),
+	]);
+
+	const seen = new Set<unknown>();
+	const contexts = [
+		{ label: "app", ctx: appContext },
+		{ label: "user", ctx: userContext },
+	].filter(
+		(entry): entry is { label: string; ctx: NonNullable<typeof entry.ctx> } => {
+			if (!entry.ctx) return false;
+			if (seen.has(entry.ctx.octokit)) return false;
+			seen.add(entry.ctx.octokit);
+			return true;
+		},
+	);
+
+	if (contexts.length === 0) {
+		console.warn(`${tag} no usable context`);
+		return null;
+	}
+
+	let lastError: unknown = null;
+	for (const { label, ctx } of contexts) {
+		try {
+			const attempt = data.attempt;
+			const response = await withGitHubOperationTimeout(
+				`${tag} ${label}`,
+				GITHUB_OPERATION_TIMEOUT_MS,
+				() =>
+					attempt
+						? ctx.octokit.request(
+								"GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs",
+								{
+									owner: data.owner,
+									repo: data.repo,
+									run_id: data.runId,
+									attempt_number: attempt,
+									request: { parseSuccessResponseBody: false },
+								},
+							)
+						: ctx.octokit.request(
+								"GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+								{
+									owner: data.owner,
+									repo: data.repo,
+									run_id: data.runId,
+									request: { parseSuccessResponseBody: false },
+								},
+							),
+			);
+			const body = response.data as unknown;
+			const buffer =
+				body instanceof ArrayBuffer
+					? body
+					: ArrayBuffer.isView(body)
+						? (body as ArrayBufferView).buffer.slice(
+								(body as ArrayBufferView).byteOffset,
+								(body as ArrayBufferView).byteOffset +
+									(body as ArrayBufferView).byteLength,
+							)
+						: body && typeof (body as Response).arrayBuffer === "function"
+							? await (body as Response).arrayBuffer()
+							: null;
+			if (!buffer) {
+				console.error(`${tag} unsupported response shape`, typeof body);
+				return null;
+			}
+			const bytes = new Uint8Array(buffer);
+			const jobs = await parseLogsZip(bytes);
+			console.log(`${tag} ok via ${label}`, {
+				status: response.status,
+				bytes: bytes.byteLength,
+				jobs: Object.keys(jobs).length,
+			});
+			return {
+				jobs,
+				fetchedAt: new Date().toISOString(),
+				notAvailable: false,
+			};
+		} catch (error) {
+			lastError = error;
+			const status = error instanceof RequestError ? error.status : undefined;
+			console.warn(`${tag} ${label} failed`, {
+				status,
+				message: error instanceof Error ? error.message : String(error),
+			});
+			if (status === 404 || status === 410) {
+				return {
+					jobs: {},
+					fetchedAt: new Date().toISOString(),
+					notAvailable: true,
+				};
+			}
+			if (status === 401 || status === 403) continue;
+			console.error(`${tag} unexpected error`, error);
+			return null;
+		}
+	}
+	console.error(`${tag} all auth tiers failed`, lastError);
+	return null;
+}
+
 export const getWorkflowRunLogsBundle = createServerFn({ method: "GET" })
 	.inputValidator(identityValidator<WorkflowRunLogsBundleInput>)
 	.handler(async ({ data }): Promise<WorkflowRunLogsBundle | null> => {
-		const repoInput = { owner: data.owner, repo: data.repo };
-		const tag = `[getWorkflowRunLogsBundle ${data.owner}/${data.repo}#${data.runId}${data.attempt ? `@${data.attempt}` : ""}]`;
+		const context = await getGitHubContextForRepository(data);
+		if (!context) {
+			return fetchWorkflowRunLogsBundleUncached(data);
+		}
 
-		const [appContext, userContext] = await Promise.all([
-			getGitHubContextForRepository(repoInput),
-			getGitHubUserContextForRepository(repoInput),
-		]);
-
-		const seen = new Set<unknown>();
-		const contexts = [
-			{ label: "app", ctx: appContext },
-			{ label: "user", ctx: userContext },
-		].filter(
-			(
-				entry,
-			): entry is { label: string; ctx: NonNullable<typeof entry.ctx> } => {
-				if (!entry.ctx) return false;
-				if (seen.has(entry.ctx.octokit)) return false;
-				seen.add(entry.ctx.octokit);
-				return true;
+		// Cache the parsed bundle. Once a run+attempt completes its data is
+		// immutable, so we use a long fresh window and rely on the
+		// workflowRunEntity signal (bumped by `workflow_run` and `workflow_job`
+		// webhooks) to invalidate while the run is still in-flight.
+		return getOrRevalidateGitHubResource<WorkflowRunLogsBundle | null>({
+			userId: context.session.user.id,
+			resource: "actions.run.logsBundle",
+			params: {
+				owner: data.owner,
+				repo: data.repo,
+				runId: data.runId,
+				attempt: data.attempt ?? null,
 			},
-		);
-
-		if (contexts.length === 0) {
-			console.warn(`${tag} no usable context`);
-			return null;
-		}
-
-		let lastError: unknown = null;
-		for (const { label, ctx } of contexts) {
-			try {
-				const attempt = data.attempt;
-				const response = await withGitHubOperationTimeout(
-					`${tag} ${label}`,
-					GITHUB_OPERATION_TIMEOUT_MS,
-					() =>
-						attempt
-							? ctx.octokit.request(
-									"GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs",
-									{
-										owner: data.owner,
-										repo: data.repo,
-										run_id: data.runId,
-										attempt_number: attempt,
-										request: { parseSuccessResponseBody: false },
-									},
-								)
-							: ctx.octokit.request(
-									"GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs",
-									{
-										owner: data.owner,
-										repo: data.repo,
-										run_id: data.runId,
-										request: { parseSuccessResponseBody: false },
-									},
-								),
-				);
-				const body = response.data as unknown;
-				const buffer =
-					body instanceof ArrayBuffer
-						? body
-						: ArrayBuffer.isView(body)
-							? (body as ArrayBufferView).buffer.slice(
-									(body as ArrayBufferView).byteOffset,
-									(body as ArrayBufferView).byteOffset +
-										(body as ArrayBufferView).byteLength,
-								)
-							: body && typeof (body as Response).arrayBuffer === "function"
-								? await (body as Response).arrayBuffer()
-								: null;
-				if (!buffer) {
-					console.error(`${tag} unsupported response shape`, typeof body);
-					return null;
-				}
-				const bytes = new Uint8Array(buffer);
-				const jobs = await parseLogsZip(bytes);
-				console.log(`${tag} ok via ${label}`, {
-					status: response.status,
-					bytes: bytes.byteLength,
-					jobs: Object.keys(jobs).length,
-				});
+			freshForMs: 60 * 60 * 1000,
+			signalKeys: [
+				githubRevalidationSignalKeys.workflowRunEntity({
+					owner: data.owner,
+					repo: data.repo,
+					runId: data.runId,
+				}),
+			],
+			fetcher: async () => {
+				const bundle = await fetchWorkflowRunLogsBundleUncached(data);
 				return {
-					jobs,
-					fetchedAt: new Date().toISOString(),
-					notAvailable: false,
+					kind: "success",
+					data: bundle,
+					metadata: createGitHubResponseMetadata(200, {}),
 				};
-			} catch (error) {
-				lastError = error;
-				const status = error instanceof RequestError ? error.status : undefined;
-				console.warn(`${tag} ${label} failed`, {
-					status,
-					message: error instanceof Error ? error.message : String(error),
-				});
-				if (status === 404 || status === 410) {
-					return {
-						jobs: {},
-						fetchedAt: new Date().toISOString(),
-						notAvailable: true,
-					};
-				}
-				if (status === 401 || status === 403) continue;
-				console.error(`${tag} unexpected error`, error);
-				return null;
-			}
-		}
-		console.error(`${tag} all auth tiers failed`, lastError);
-		return null;
+			},
+		});
 	});
 
 /** Build the zip-file job name for a given API job name. Exported for tests/clients. */

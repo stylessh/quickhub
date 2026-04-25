@@ -21,18 +21,49 @@ import { Pagination } from "#/components/pagination";
 import { RepoActivityCards } from "#/components/repo/repo-activity-cards";
 import { WorkflowRunRow } from "#/components/workflows/workflow-run-row";
 import {
+	githubQueryKeys,
 	githubRepoBranchesQueryOptions,
 	githubRepoOverviewQueryOptions,
+	githubViewerQueryOptions,
 	githubWorkflowRunsFromRepoQueryOptions,
 } from "#/lib/github.query";
 import type { WorkflowRun } from "#/lib/github.types";
+import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { buildSeo, formatPageTitle } from "#/lib/seo";
+import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { useHasMounted } from "#/lib/use-has-mounted";
 
 const PER_PAGE = 30;
 
 export const Route = createFileRoute("/_protected/$owner/$repo/actions/")({
 	ssr: false,
+	loader: ({ context, params }) => {
+		const scope = { userId: context.user.id };
+		// Prefetch first-page runs (no filters) and supporting data so the
+		// list paints from the server-side cache instantly. The component
+		// will refetch with URL-derived filters if those differ.
+		void context.queryClient.prefetchQuery(
+			githubWorkflowRunsFromRepoQueryOptions(scope, {
+				owner: params.owner,
+				repo: params.repo,
+				page: 1,
+				perPage: 30,
+			}),
+		);
+		void context.queryClient.prefetchQuery(
+			githubRepoOverviewQueryOptions(scope, {
+				owner: params.owner,
+				repo: params.repo,
+			}),
+		);
+		void context.queryClient.prefetchQuery(
+			githubRepoBranchesQueryOptions(scope, {
+				owner: params.owner,
+				repo: params.repo,
+			}),
+		);
+		void context.queryClient.prefetchQuery(githubViewerQueryOptions(scope));
+	},
 	head: ({ match, params }) =>
 		buildSeo({
 			path: match.pathname,
@@ -74,7 +105,7 @@ function toFilterable(run: WorkflowRun, ownerRepo: string): RunFilterable {
 function RepoActionsPage() {
 	const { user } = Route.useRouteContext();
 	const { owner, repo } = Route.useParams();
-	const scope = { userId: user.id };
+	const scope = useMemo(() => ({ userId: user.id }), [user.id]);
 	const hasMounted = useHasMounted();
 	const ownerRepo = `${owner}/${repo}`;
 
@@ -102,8 +133,8 @@ function RepoActionsPage() {
 		enabled: hasMounted,
 	});
 
-	const query = useQuery({
-		...githubWorkflowRunsFromRepoQueryOptions(scope, {
+	const runsQueryInput = useMemo(
+		() => ({
 			owner,
 			repo,
 			page: urlParams.page,
@@ -113,14 +144,25 @@ function RepoActionsPage() {
 			actor: apiActor,
 			branch: apiBranch,
 		}),
+		[owner, repo, urlParams.page, apiStatus, apiEvent, apiActor, apiBranch],
+	);
+
+	const query = useQuery({
+		...githubWorkflowRunsFromRepoQueryOptions(scope, runsQueryInput),
 		enabled: hasMounted,
 		placeholderData: keepPreviousData,
-		refetchInterval: (q) => {
-			const data = q.state.data;
-			if (!Array.isArray(data)) return false;
-			return data.some((r) => r.status !== "completed") ? 10_000 : false;
-		},
 	});
+
+	const webhookTargets = useMemo(
+		() => [
+			{
+				queryKey: githubQueryKeys.actions.runsList(scope, runsQueryInput),
+				signalKeys: [githubRevalidationSignalKeys.actionsRepo({ owner, repo })],
+			},
+		],
+		[scope, runsQueryInput, owner, repo],
+	);
+	useGitHubSignalStream(webhookTargets);
 
 	const runs = useMemo(() => query.data ?? [], [query.data]);
 	const filterableRuns = useMemo(
