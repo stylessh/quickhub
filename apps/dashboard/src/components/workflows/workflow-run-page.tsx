@@ -3,6 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useMemo } from "react";
 import {
+	getCheckState,
+	getCheckStateColor,
+} from "#/components/checks/check-state-icon";
+import {
 	DetailPageLayout,
 	DetailPageSkeletonLayout,
 	StaggerItem,
@@ -18,6 +22,7 @@ import {
 import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { useHasMounted } from "#/lib/use-has-mounted";
+import { useRegisterTab } from "#/lib/use-register-tab";
 import { WorkflowRunArtifacts } from "./workflow-run-artifacts";
 import { WorkflowRunGraph } from "./workflow-run-graph";
 import { WorkflowRunHeader } from "./workflow-run-header";
@@ -88,6 +93,20 @@ export function WorkflowRunPage() {
 		...githubWorkflowDefinitionQueryOptions(scope, definitionInput),
 		enabled: hasMounted && !!runQuery.data,
 	});
+
+	useRegisterTab(
+		runQuery.data
+			? {
+					type: "actions",
+					title: runQuery.data.displayTitle,
+					number: runQuery.data.runNumber,
+					url: `/${owner}/${repo}/actions/runs/${runIdNum}`,
+					repo: `${owner}/${repo}`,
+					iconColor: getCheckStateColor(getCheckState(runQuery.data)),
+					tabId: `actions:${owner}/${repo}/run/${runIdNum}`,
+				}
+			: null,
+	);
 
 	if (runQuery.error) throw runQuery.error;
 	const run = runQuery.data;

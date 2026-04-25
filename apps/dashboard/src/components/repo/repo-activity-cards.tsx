@@ -1,10 +1,10 @@
 import {
+	ActionsIcon,
 	ChevronRightIcon,
 	CommentIcon,
 	GitPullRequestIcon,
 	IssuesIcon,
 	PlusSignIcon,
-	RefreshCwIcon,
 } from "@diffkit/icons";
 import { cn } from "@diffkit/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -115,7 +115,7 @@ export function RepoActivityCards({
 			/>
 			<ActivityCard
 				title="Actions"
-				icon={RefreshCwIcon}
+				icon={ActionsIcon}
 				items={runsQuery.data}
 				viewAllHref={`/${owner}/${repo}/actions`}
 				renderItem={(run) => (

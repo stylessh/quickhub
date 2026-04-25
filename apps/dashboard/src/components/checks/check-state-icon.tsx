@@ -8,6 +8,16 @@ export type CheckState =
 	| "skipped"
 	| "expected";
 
+/** Tailwind text-color class for a CheckState — used by tab icons / inline
+ *  badges that want a single color without the wrapped CheckStateIcon. */
+export function getCheckStateColor(state: CheckState): string {
+	if (state === "success") return "text-green-500";
+	if (state === "failure") return "text-red-500";
+	if (state === "pending") return "text-yellow-500";
+	if (state === "expected") return "text-yellow-500";
+	return "text-muted-foreground";
+}
+
 export function getCheckState(input: {
 	status: string;
 	conclusion: string | null;

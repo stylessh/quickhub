@@ -12,6 +12,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	CheckStateIcon,
 	getCheckState,
+	getCheckStateColor,
 } from "#/components/checks/check-state-icon";
 import {
 	DetailPageLayout,
@@ -32,6 +33,7 @@ import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { useHasMounted } from "#/lib/use-has-mounted";
 import { useNow } from "#/lib/use-now";
+import { useRegisterTab } from "#/lib/use-register-tab";
 import { formatDuration } from "./graph/format";
 import {
 	countEntryLines,
@@ -147,6 +149,20 @@ export function WorkflowJobPage() {
 		const key = workflowZipJobName(job.name);
 		return bundleQuery.data.jobs[key]?.steps ?? null;
 	}, [job, bundleQuery.data]);
+
+	useRegisterTab(
+		runQuery.data && job
+			? {
+					type: "actions",
+					title: job.name,
+					number: runQuery.data.runNumber,
+					url: `/${owner}/${repo}/actions/runs/${runIdNum}/job/${jobIdNum}`,
+					repo: `${owner}/${repo}`,
+					iconColor: getCheckStateColor(getCheckState(job)),
+					tabId: `actions:${owner}/${repo}/run/${runIdNum}/job/${jobIdNum}`,
+				}
+			: null,
+	);
 
 	if (runQuery.error) throw runQuery.error;
 	const run = runQuery.data;
