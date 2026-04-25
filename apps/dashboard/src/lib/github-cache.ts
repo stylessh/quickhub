@@ -880,11 +880,17 @@ export async function getOrRevalidateGitHubResource<TData>({
 			getNamespaceVersions,
 			now,
 		});
-		resolvedStore = await resolved.getResolvedStore();
 		const existingEntry = resolved.existingEntry;
 		const currentTime = resolved.currentTime;
 		const payloadStorageKey = resolved.payloadStorageKey;
 		const isSignalNewerThanCache = resolved.isSignalNewerThanCache;
+		const getLegacyStore = async () => {
+			if (!resolvedStore) {
+				resolvedStore = await resolved.getResolvedStore();
+			}
+
+			return resolvedStore;
+		};
 
 		if (
 			existingEntry &&
@@ -910,7 +916,7 @@ export async function getOrRevalidateGitHubResource<TData>({
 
 				await persistGitHubCacheEntry({
 					entry: staleEntry,
-					legacyStore: resolvedStore,
+					legacyStore: await getLegacyStore(),
 					payloadStore: resolvedPayloadStore,
 					payloadStorageKey,
 					payloadRetentionSeconds,
@@ -928,7 +934,7 @@ export async function getOrRevalidateGitHubResource<TData>({
 
 				await persistGitHubCacheEntry({
 					entry: staleEntry,
-					legacyStore: resolvedStore,
+					legacyStore: await getLegacyStore(),
 					payloadStore: resolvedPayloadStore,
 					payloadStorageKey,
 					payloadRetentionSeconds,
@@ -963,7 +969,7 @@ export async function getOrRevalidateGitHubResource<TData>({
 
 			await persistGitHubCacheEntry({
 				entry: refreshedEntry,
-				legacyStore: resolvedStore,
+				legacyStore: await getLegacyStore(),
 				payloadStore: resolvedPayloadStore,
 				payloadStorageKey,
 				payloadRetentionSeconds,
@@ -999,7 +1005,7 @@ export async function getOrRevalidateGitHubResource<TData>({
 
 		await persistGitHubCacheEntry({
 			entry: nextEntry,
-			legacyStore: resolvedStore,
+			legacyStore: await getLegacyStore(),
 			payloadStore: resolvedPayloadStore,
 			payloadStorageKey,
 			payloadRetentionSeconds,
