@@ -134,6 +134,7 @@ export type MyPullsResult = {
 	forbiddenOrgs?: string[];
 	partial?: boolean;
 	timedOut?: boolean;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type MyIssuesResult = {
@@ -143,6 +144,7 @@ export type MyIssuesResult = {
 	forbiddenOrgs?: string[];
 	partial?: boolean;
 	timedOut?: boolean;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type CommandPaletteSearchResult = {
@@ -241,6 +243,7 @@ export type IssuePageData = {
 	events: TimelineEvent[];
 	commentPagination: CommentPagination;
 	eventPagination: EventPagination;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type PullCheckRun = {
@@ -385,6 +388,7 @@ export type PullStatus = {
 	canUpdateBranch: boolean;
 	canBypassProtections: boolean;
 	canMerge: boolean;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type PullCommit = {
@@ -413,6 +417,7 @@ export type PullPageData = {
 	commentPagination: CommentPagination;
 	eventPagination: EventPagination;
 	headRefDeleted: boolean;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type PullFile = {
@@ -649,6 +654,7 @@ export type RepoOverview = {
 		date: string;
 		author: GitHubActor | null;
 	} | null;
+	__meta?: GitHubLocalFirstMeta;
 };
 
 export type RepoTreeEntry = {
@@ -804,6 +810,13 @@ export type NotificationItem = {
 	url: string;
 };
 
+export type GitHubLocalFirstMeta = {
+	cacheStatus: "fresh" | "stale" | "miss";
+	fetchedAt: number | null;
+	isRevalidating: boolean;
+};
+
 export type NotificationsResult = {
 	notifications: NotificationItem[];
+	__meta?: GitHubLocalFirstMeta;
 };

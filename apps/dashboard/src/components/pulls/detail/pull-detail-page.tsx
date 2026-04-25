@@ -76,6 +76,10 @@ export function PullDetailContent({
 				queryKey: githubQueryKeys.pulls.status(scope, input),
 				signalKeys: [
 					githubRevalidationSignalKeys.pullEntity(input),
+					githubRevalidationSignalKeys.repoProtection({
+						owner: input.owner,
+						repo: input.repo,
+					}),
 					githubRevalidationSignalKeys.repoStatuses({
 						owner: input.owner,
 						repo: input.repo,
