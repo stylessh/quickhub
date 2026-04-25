@@ -51,7 +51,6 @@ import {
 	lazy,
 	Suspense,
 	useCallback,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -113,10 +112,12 @@ import type {
 	PullWorkflowApproval,
 	TimelineEvent,
 } from "#/lib/github.types";
+import { githubRevalidationSignalKeys } from "#/lib/github-revalidation";
 import {
 	mergeIssueStateIntoCloseEvent,
 	parseCloseReason,
 } from "#/lib/timeline-close-reason";
+import { useGitHubSignalStream } from "#/lib/use-github-signal-stream";
 import { usePrefersNoHover } from "#/lib/use-prefers-no-hover";
 import { checkPermissionWarning } from "#/lib/warning-store";
 
@@ -334,9 +335,45 @@ function MergeStatusSection({
 	prTitle: string;
 	firstCommitMessage?: string;
 }) {
+	const input = useMemo(
+		() => ({ owner, repo, pullNumber }),
+		[owner, repo, pullNumber],
+	);
+	const statusQueryKey = useMemo(
+		() => githubQueryKeys.pulls.status(scope, input),
+		[scope, input],
+	);
 	const statusQuery = useQuery({
-		...githubPullStatusQueryOptions(scope, { owner, repo, pullNumber }),
+		...githubPullStatusQueryOptions(scope, input),
 	});
+	const workflowStatusRefreshTargets = useMemo(
+		() => [
+			{
+				queryKey: statusQueryKey,
+				signalKeys: [
+					githubRevalidationSignalKeys.pullEntity(input),
+					githubRevalidationSignalKeys.repoProtection({
+						owner: input.owner,
+						repo: input.repo,
+					}),
+					githubRevalidationSignalKeys.repoStatuses({
+						owner: input.owner,
+						repo: input.repo,
+					}),
+					...(statusQuery.data?.pendingWorkflowApprovals ?? []).map(
+						(approval) =>
+							githubRevalidationSignalKeys.workflowRunEntity({
+								owner: input.owner,
+								repo: input.repo,
+								runId: approval.workflowRunId,
+							}),
+					),
+				],
+			},
+		],
+		[input, statusQuery.data?.pendingWorkflowApprovals, statusQueryKey],
+	);
+	useGitHubSignalStream(workflowStatusRefreshTargets);
 
 	const status = statusQuery.data ?? null;
 
@@ -344,6 +381,7 @@ function MergeStatusSection({
 
 	return (
 		<MergeStatusCard
+			scope={scope}
 			status={status}
 			owner={owner}
 			repo={repo}
@@ -440,6 +478,7 @@ function MergedBranchBanner({
 }
 
 function MergeStatusCard({
+	scope,
 	status,
 	owner,
 	repo,
@@ -447,6 +486,7 @@ function MergeStatusCard({
 	prTitle,
 	firstCommitMessage,
 }: {
+	scope: GitHubQueryScope;
 	status: PullStatus;
 	owner: string;
 	repo: string;
@@ -506,6 +546,7 @@ function MergeStatusCard({
 			{/* Checks section */}
 			{(checks.total > 0 || pendingWorkflowApprovals.length > 0) && (
 				<ChecksSection
+					scope={scope}
 					checks={checks}
 					checkRuns={checkRuns}
 					pendingWorkflowApprovals={pendingWorkflowApprovals}
@@ -754,6 +795,7 @@ function ReviewsSection({
 // ── Checks section ──────────────────────────────────────────────────
 
 function ChecksSection({
+	scope,
 	checks,
 	checkRuns,
 	pendingWorkflowApprovals,
@@ -763,6 +805,7 @@ function ChecksSection({
 	repo,
 	pullNumber,
 }: {
+	scope: GitHubQueryScope;
 	checks: PullStatus["checks"];
 	checkRuns: PullCheckRun[];
 	pendingWorkflowApprovals: PullWorkflowApproval[];
@@ -776,6 +819,10 @@ function ChecksSection({
 	const [isRerunning, setIsRerunning] = useState(false);
 	const [isApproving, setIsApproving] = useState(false);
 	const queryClient = useQueryClient();
+	const statusQueryKey = useMemo(
+		() => githubQueryKeys.pulls.status(scope, { owner, repo, pullNumber }),
+		[scope, owner, repo, pullNumber],
+	);
 
 	const pendingTotal = checks.pending + checks.expected;
 	const approvalCount = pendingWorkflowApprovals.length;
@@ -894,32 +941,26 @@ function ChecksSection({
 					toast.warning(
 						`Approved ${approved} workflow${approved !== 1 ? "s" : ""}, but ${failed} failed`,
 					);
+				} else {
+					toast.success(
+						`Approved ${pendingWorkflowApprovals.length} workflow${pendingWorkflowApprovals.length !== 1 ? "s" : ""}`,
+					);
 				}
-				// Keep the button in loading state; the effect below resets it once the
-				// workflow_run webhook invalidates the cache and the pending list drains.
-				await queryClient.invalidateQueries({ queryKey: ["github"] });
+				await queryClient.invalidateQueries({
+					queryKey: statusQueryKey,
+					exact: true,
+					refetchType: "active",
+				});
 			} else {
 				toast.error(result.error);
 				checkPermissionWarning(result, `${owner}/${repo}`);
-				setIsApproving(false);
 			}
 		} catch {
 			toast.error("Failed to approve workflows");
+		} finally {
 			setIsApproving(false);
 		}
 	};
-
-	// Reset the approving state when the pending list drains (webhook arrived) or
-	// after a safety timeout to avoid a permanently-stuck spinner.
-	useEffect(() => {
-		if (!isApproving) return;
-		if (pendingWorkflowApprovals.length === 0) {
-			setIsApproving(false);
-			return;
-		}
-		const timer = setTimeout(() => setIsApproving(false), 30_000);
-		return () => clearTimeout(timer);
-	}, [isApproving, pendingWorkflowApprovals.length]);
 
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
