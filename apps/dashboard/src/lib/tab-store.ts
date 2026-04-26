@@ -6,7 +6,8 @@ export type TabType =
 	| "review"
 	| "repo"
 	| "commit"
-	| "commits";
+	| "commits"
+	| "actions";
 
 export interface Tab {
 	id: string;
@@ -31,6 +32,7 @@ const VALID_TAB_TYPES = {
 	repo: true,
 	commit: true,
 	commits: true,
+	actions: true,
 } satisfies Record<TabType, true>;
 
 function isValidTabType(type: unknown): type is TabType {

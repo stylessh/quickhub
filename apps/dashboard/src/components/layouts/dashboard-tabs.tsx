@@ -1,4 +1,5 @@
 import {
+	ActionsIcon,
 	ArchiveIcon,
 	ChevronRightIcon,
 	CloseIcon,
@@ -36,6 +37,7 @@ const tabIconMap = {
 	repo: ArchiveIcon,
 	commit: GitCommitIcon,
 	commits: GitCommitIcon,
+	actions: ActionsIcon,
 } as const;
 
 function useScrollShadows(tabCount: number) {
