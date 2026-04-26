@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	index,
+	integer,
+	primaryKey,
+	sqliteTable,
+	text,
+} from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
 	id: text("id").primaryKey(),
@@ -93,6 +99,27 @@ export const githubCacheNamespace = sqliteTable("github_cache_namespace", {
 	version: integer("version").notNull(),
 	updatedAt: integer("updated_at").notNull(),
 });
+
+/**
+ * Orgs that returned an OAuth App access restriction error during a previous
+ * search. Used to skip those orgs in the OAuth fallback search source so we
+ * stop wasting per-source timeout budget (and stop re-surfacing the same
+ * warning on every reload). Entries are removed once the user installs the
+ * GitHub App on the org (detected in `getMySearchSources`).
+ */
+export const userForbiddenOrg = sqliteTable(
+	"user_forbidden_org",
+	{
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		org: text("org").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.userId, table.org] }),
+	}),
+);
 
 export const githubWebhookEvent = sqliteTable(
 	"github_webhook_event",

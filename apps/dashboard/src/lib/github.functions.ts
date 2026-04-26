@@ -1651,31 +1651,6 @@ class GitHubOperationTimeoutError extends Error {
 	}
 }
 
-/**
- * Module-level tracker for recent GitHub API timeouts.
- * Automatically recorded by `withGitHubOperationTimeout` so that
- * callers that swallow the error (fallback-to-REST, return []) still
- * contribute to the global "GitHub is timing out" signal.
- */
-const TIMEOUT_TRACKER_WINDOW_MS = 60_000;
-let recentTimeoutTimestamps: number[] = [];
-
-function recordGitHubTimeout() {
-	const now = Date.now();
-	recentTimeoutTimestamps.push(now);
-	recentTimeoutTimestamps = recentTimeoutTimestamps.filter(
-		(t) => now - t < TIMEOUT_TRACKER_WINDOW_MS,
-	);
-}
-
-function hasRecentGitHubTimeouts(): boolean {
-	const now = Date.now();
-	recentTimeoutTimestamps = recentTimeoutTimestamps.filter(
-		(t) => now - t < TIMEOUT_TRACKER_WINDOW_MS,
-	);
-	return recentTimeoutTimestamps.length > 0;
-}
-
 function getRemainingSearchTimeoutMs(deadlineAt: number, maxTimeoutMs: number) {
 	return Math.max(0, Math.min(maxTimeoutMs, deadlineAt - Date.now()));
 }
@@ -1686,7 +1661,6 @@ async function withGitHubOperationTimeout<T>(
 	task: (signal: AbortSignal) => Promise<T>,
 ) {
 	if (timeoutMs <= 0) {
-		recordGitHubTimeout();
 		throw new GitHubOperationTimeoutError(label, timeoutMs);
 	}
 
@@ -1696,7 +1670,6 @@ async function withGitHubOperationTimeout<T>(
 	const timeoutPromise = new Promise<never>((_, reject) => {
 		timeoutId = setTimeout(() => {
 			controller.abort();
-			recordGitHubTimeout();
 			reject(new GitHubOperationTimeoutError(label, timeoutMs));
 		}, timeoutMs);
 	});
@@ -1727,6 +1700,19 @@ async function executeGitHubGraphQL<TResponse>(
 				request: { signal },
 			}),
 	);
+}
+
+/**
+ * Fire-and-forget persistence so the OAuth fallback can skip these orgs on
+ * future fetches (see `getMySearchSources`). Errors are logged but never
+ * propagate — this is best-effort optimization, not correctness-critical.
+ */
+function persistForbiddenOrgs(userId: string, orgs: string[]) {
+	void import("./forbidden-orgs-store")
+		.then(({ recordForbiddenOrgs }) => recordForbiddenOrgs(userId, orgs))
+		.catch((error) => {
+			console.error("[github-search] failed to persist forbidden orgs", error);
+		});
 }
 
 /**
@@ -4918,6 +4904,55 @@ async function getMySearchSources(
 		});
 	}
 
+	// Seed the OAuth fallback's exclusion list with orgs we already know are
+	// blocked by an OAuth App restriction. Without this we'd re-issue the same
+	// failing search on every reload — surfacing the "restricted third-party
+	// access" warning and burning per-source timeout budget.
+	//
+	// Self-heal: if the user has now installed the app on an org that was
+	// previously forbidden, drop the persisted entry so we treat it normally
+	// going forward.
+	const installedOrgKeys = new Set(
+		installations.map((installation) =>
+			normalizeLogin(installation.account.login),
+		),
+	);
+	try {
+		const { getForbiddenOrgsForUser, clearForbiddenOrgsForUser } = await import(
+			"./forbidden-orgs-store"
+		);
+		const knownForbiddenOrgs = await getForbiddenOrgsForUser(
+			context.session.user.id,
+		);
+		const stillForbidden: string[] = [];
+		const recovered: string[] = [];
+		for (const org of knownForbiddenOrgs) {
+			if (installedOrgKeys.has(normalizeLogin(org))) {
+				recovered.push(org);
+			} else {
+				stillForbidden.push(org);
+			}
+		}
+		if (recovered.length > 0) {
+			void clearForbiddenOrgsForUser(context.session.user.id, recovered).catch(
+				(error) => {
+					console.error(
+						"[github-search] failed to clear recovered forbidden orgs",
+						error,
+					);
+				},
+			);
+		}
+		for (const org of stillForbidden) {
+			addExcludedOwnerScope(excludedOAuthOwners, {
+				login: org,
+				targetType: "Organization",
+			});
+		}
+	} catch (error) {
+		console.error("[github-search] failed to load known forbidden orgs", error);
+	}
+
 	sources.push({
 		label: "oauth:fallback",
 		context,
@@ -5196,12 +5231,14 @@ async function getMyPullsResult({
 
 			const data = mergeMyPullsResults(results);
 			if (forbiddenOrgs.length > 0) {
-				data.forbiddenOrgs = [...new Set(forbiddenOrgs)];
+				const uniqueForbiddenOrgs = [...new Set(forbiddenOrgs)];
+				data.forbiddenOrgs = uniqueForbiddenOrgs;
+				void persistForbiddenOrgs(context.session.user.id, uniqueForbiddenOrgs);
 			}
 			if (results.length < sources.length) {
 				data.partial = true;
 			}
-			if (timedOut || hasRecentGitHubTimeouts()) {
+			if (timedOut) {
 				data.timedOut = true;
 			}
 
@@ -5372,12 +5409,14 @@ async function getMyIssuesResult({
 
 			const data = mergeMyIssuesResults(results);
 			if (forbiddenOrgs.length > 0) {
-				data.forbiddenOrgs = [...new Set(forbiddenOrgs)];
+				const uniqueForbiddenOrgs = [...new Set(forbiddenOrgs)];
+				data.forbiddenOrgs = uniqueForbiddenOrgs;
+				void persistForbiddenOrgs(context.session.user.id, uniqueForbiddenOrgs);
 			}
 			if (results.length < sources.length) {
 				data.partial = true;
 			}
-			if (timedOut || hasRecentGitHubTimeouts()) {
+			if (timedOut) {
 				data.timedOut = true;
 			}
 
