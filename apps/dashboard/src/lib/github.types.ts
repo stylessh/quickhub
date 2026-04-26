@@ -148,6 +148,7 @@ export type MyIssuesResult = {
 };
 
 export type CommandPaletteSearchResult = {
+	repos: UserRepoSummary[];
 	pulls: PullSummary[];
 	issues: IssueSummary[];
 };
@@ -674,6 +675,19 @@ export type FileLastCommit = {
 	message: string;
 	date: string;
 	author: GitHubActor | null;
+};
+
+export type RepoCommitSummary = {
+	sha: string;
+	message: string;
+	date: string;
+	authorName: string | null;
+	author: GitHubActor | null;
+};
+
+export type RepoCommitsPage = {
+	commits: RepoCommitSummary[];
+	nextPage: number | null;
 };
 
 export type RepoBranch = {

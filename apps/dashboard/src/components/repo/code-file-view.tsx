@@ -25,6 +25,7 @@ import {
 	githubRepoTreeQueryOptions,
 } from "#/lib/github.query";
 import type { FileLastCommit } from "#/lib/github.types";
+import { CommitsLink } from "./commits-link";
 
 const IMAGE_EXTENSIONS = new Set([
 	"png",
@@ -217,7 +218,13 @@ export function CodeFileView({
 		const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${currentRef}/${path}`;
 		return (
 			<div className="flex flex-col gap-4">
-				<FileCommitBar owner={owner} repo={repo} commit={commit} />
+				<FileCommitBar
+					owner={owner}
+					repo={repo}
+					currentRef={currentRef}
+					path={path}
+					commit={commit}
+				/>
 				<div className="overflow-hidden rounded-lg border">
 					<FileViewHeader
 						fileName={fileName}
@@ -278,7 +285,13 @@ export function CodeFileView({
 
 	return (
 		<div className="flex flex-col gap-4">
-			<FileCommitBar owner={owner} repo={repo} commit={commit} />
+			<FileCommitBar
+				owner={owner}
+				repo={repo}
+				currentRef={currentRef}
+				path={path}
+				commit={commit}
+			/>
 			<div className="overflow-hidden rounded-lg border">
 				<FileViewHeader
 					fileName={fileName}
@@ -328,7 +341,13 @@ function SvgFileView({
 
 	return (
 		<div className="flex flex-col gap-4">
-			<FileCommitBar owner={owner} repo={repo} commit={commit} />
+			<FileCommitBar
+				owner={owner}
+				repo={repo}
+				currentRef={currentRef}
+				path={path}
+				commit={commit}
+			/>
 			<div className="overflow-hidden rounded-lg border">
 				<FileViewHeader
 					fileName={fileName}
@@ -467,10 +486,14 @@ function FileViewHeader({
 function FileCommitBar({
 	owner,
 	repo,
+	currentRef,
+	path,
 	commit,
 }: {
 	owner: string;
 	repo: string;
+	currentRef: string;
+	path: string;
 	commit: FileLastCommit | null | undefined;
 }) {
 	if (!commit) {
@@ -515,6 +538,12 @@ function FileCommitBar({
 					</TooltipContent>
 				</Tooltip>
 				<span>{formatRelativeTime(commit.date)}</span>
+				<CommitsLink
+					owner={owner}
+					repo={repo}
+					currentRef={currentRef}
+					path={path}
+				/>
 			</div>
 		</div>
 	);

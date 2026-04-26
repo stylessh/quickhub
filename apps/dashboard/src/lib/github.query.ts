@@ -30,6 +30,7 @@ import {
 	getRepoBranches,
 	getRepoCollaborators,
 	getRepoCommit,
+	getRepoCommits,
 	getRepoContributors,
 	getRepoDiscussions,
 	getRepoFileContent,
@@ -293,6 +294,16 @@ export const githubQueryKeys = {
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string },
 		) => ["github", scope.userId, "repo", "refHeadCommit", input] as const,
+		commits: (
+			scope: GitHubQueryScope,
+			input: {
+				owner: string;
+				repo: string;
+				ref: string;
+				path?: string;
+				perPage?: number;
+			},
+		) => ["github", scope.userId, "repo", "commits", input] as const,
 		treeEntryCommits: (
 			scope: GitHubQueryScope,
 			input: { owner: string; repo: string; ref: string; dirPath: string },
@@ -936,6 +947,28 @@ export function githubRefHeadCommitQueryOptions(
 	return queryOptions({
 		queryKey: githubQueryKeys.repo.refHeadCommit(scope, input),
 		queryFn: () => getRefHeadCommit({ data: input }),
+		staleTime: githubCachePolicy.detail.staleTimeMs,
+		gcTime: githubCachePolicy.detail.gcTimeMs,
+		meta: tabPersistedMeta,
+	});
+}
+
+export function githubRepoCommitsQueryOptions(
+	scope: GitHubQueryScope,
+	input: {
+		owner: string;
+		repo: string;
+		ref: string;
+		path?: string;
+		perPage?: number;
+	},
+) {
+	return infiniteQueryOptions({
+		queryKey: githubQueryKeys.repo.commits(scope, input),
+		queryFn: ({ pageParam }) =>
+			getRepoCommits({ data: { ...input, page: pageParam } }),
+		initialPageParam: 1,
+		getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
 		staleTime: githubCachePolicy.detail.staleTimeMs,
 		gcTime: githubCachePolicy.detail.gcTimeMs,
 		meta: tabPersistedMeta,

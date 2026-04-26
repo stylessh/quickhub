@@ -10,9 +10,11 @@ import { Link } from "@tanstack/react-router";
 import { formatRelativeTime } from "#/lib/format-relative-time";
 import {
 	type GitHubQueryScope,
+	githubFileLastCommitQueryOptions,
 	githubRefHeadCommitQueryOptions,
 } from "#/lib/github.query";
 import type { RepoOverview } from "#/lib/github.types";
+import { CommitsLink } from "./commits-link";
 
 export function LatestCommitBar({
 	owner,
@@ -21,6 +23,8 @@ export function LatestCommitBar({
 	scope,
 	defaultBranch,
 	defaultBranchTip,
+	path,
+	historyLabel = "Commits",
 }: {
 	owner: string;
 	repoName: string;
@@ -28,20 +32,35 @@ export function LatestCommitBar({
 	scope: GitHubQueryScope;
 	defaultBranch: string;
 	defaultBranchTip: RepoOverview["latestCommit"];
+	path?: string;
+	historyLabel?: string;
 }) {
-	const tipQuery = useQuery({
+	const pathCommitQuery = useQuery({
+		...githubFileLastCommitQueryOptions(scope, {
+			owner,
+			repo: repoName,
+			ref,
+			path: path ?? "",
+		}),
+		enabled: !!path,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+	});
+	const refCommitQuery = useQuery({
 		...githubRefHeadCommitQueryOptions(scope, {
 			owner,
 			repo: repoName,
 			ref,
 		}),
+		enabled: !path,
 		placeholderData:
-			ref === defaultBranch && defaultBranchTip != null
+			!path && ref === defaultBranch && defaultBranchTip != null
 				? defaultBranchTip
 				: undefined,
 		refetchOnMount: false,
 		refetchOnWindowFocus: false,
 	});
+	const tipQuery = path ? pathCommitQuery : refCommitQuery;
 
 	const commit = tipQuery.data;
 
@@ -95,6 +114,9 @@ export function LatestCommitBar({
 					</TooltipContent>
 				</Tooltip>
 				<span>{formatRelativeTime(commit.date)}</span>
+				<CommitsLink owner={owner} repo={repoName} currentRef={ref} path={path}>
+					{historyLabel}
+				</CommitsLink>
 			</div>
 		</div>
 	);

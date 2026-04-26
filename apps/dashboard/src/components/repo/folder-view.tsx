@@ -56,6 +56,8 @@ export function FolderView({
 					scope={scope}
 					defaultBranch={repo.defaultBranch}
 					defaultBranchTip={repo.latestCommit}
+					path={currentPath}
+					historyLabel="History"
 				/>
 				<div className="overflow-hidden rounded-b-lg border">
 					{entries.map((entry, index) => (

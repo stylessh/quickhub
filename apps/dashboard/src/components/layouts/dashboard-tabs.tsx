@@ -36,6 +36,7 @@ const tabIconMap = {
 	review: ReviewsIcon,
 	repo: ArchiveIcon,
 	commit: GitCommitIcon,
+	commits: GitCommitIcon,
 	actions: ActionsIcon,
 } as const;
 
@@ -300,7 +301,9 @@ function ScrollActiveTabIntoView({
 	useEffect(() => {
 		const container = scrollRef.current;
 		if (!container) return;
-		const activeTab = container.querySelector<HTMLElement>(".active");
+		const activeTab = container.querySelector<HTMLElement>(
+			"[data-active='true']",
+		);
 		if (!activeTab) return;
 
 		const { left: cLeft, right: cRight } = container.getBoundingClientRect();
@@ -334,9 +337,11 @@ const DetailTab = memo(function DetailTab({
 	onContextMenu: () => void;
 	routerRef: React.RefObject<ReturnType<typeof useRouter>>;
 }) {
+	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const preloadTab = () => {
 		void preloadRouteOnce(routerRef.current, tab.url);
 	};
+	const isActive = isTabActive(tab, pathname);
 
 	return (
 		<Link
@@ -357,9 +362,10 @@ const DetailTab = memo(function DetailTab({
 			onFocus={preloadTab}
 			onTouchStart={preloadTab}
 			onContextMenu={onContextMenu}
-			activeOptions={{ exact: true }}
-			activeProps={{ className: "active" }}
-			className="group relative flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground [&.active]:bg-surface-1 [&.active]:text-foreground"
+			data-active={isActive}
+			className={cn(
+				"group relative flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-surface-1 hover:text-foreground data-[active=true]:bg-surface-1 data-[active=true]:text-foreground",
+			)}
 		>
 			{tab.avatarUrl ? (
 				<img
@@ -425,3 +431,22 @@ const DetailTab = memo(function DetailTab({
 		</Link>
 	);
 });
+
+function isTabActive(tab: Tab, pathname: string) {
+	if (tab.type === "repo") {
+		const repoPath = `/${tab.repo}`;
+		return (
+			pathname === repoPath ||
+			pathname === `${repoPath}/` ||
+			pathname.startsWith(`${repoPath}/tree/`) ||
+			pathname.startsWith(`${repoPath}/blob/`)
+		);
+	}
+
+	return normalizePath(pathname) === normalizePath(tab.url);
+}
+
+function normalizePath(path: string) {
+	if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+	return path;
+}
