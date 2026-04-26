@@ -1,6 +1,7 @@
 import { GitBranchIcon, GitCommitIcon } from "@diffkit/icons";
 import { Button } from "@diffkit/ui/components/button";
 import { Skeleton } from "@diffkit/ui/components/skeleton";
+import { Spinner } from "@diffkit/ui/components/spinner";
 import {
 	Tooltip,
 	TooltipContent,
@@ -242,8 +243,8 @@ export function RepoCommitsPage({
 
 				<div ref={loadMoreRef} className="flex min-h-12 justify-center">
 					{commitsQuery.isFetchingNextPage ? (
-						<div className="w-full overflow-hidden rounded-lg border bg-surface-0">
-							<RepoCommitsRowsSkeleton />
+						<div className="flex items-center justify-center py-3 text-muted-foreground">
+							<Spinner size={16} />
 						</div>
 					) : commitsQuery.isFetchNextPageError ? (
 						<div className="flex flex-col items-center gap-2 py-3 text-center">
@@ -297,17 +298,17 @@ function CommitRow({
 					<Link
 						to="/$owner"
 						params={{ owner: commit.author.login }}
-						className="mt-0.5 shrink-0"
+						className="mt-1 shrink-0"
 					>
 						<img
 							src={commit.author.avatarUrl}
 							alt={commit.author.login}
-							className="size-8 rounded-full border border-border transition-opacity hover:opacity-80"
+							className="size-6 rounded-full border border-border transition-opacity hover:opacity-80"
 						/>
 					</Link>
 				) : (
-					<div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border bg-surface-1">
-						<GitCommitIcon size={14} className="text-muted-foreground" />
+					<div className="mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border bg-surface-1">
+						<GitCommitIcon size={12} className="text-muted-foreground" />
 					</div>
 				)}
 				<div className="min-w-0 space-y-1">
@@ -325,7 +326,7 @@ function CommitRow({
 					</p>
 				</div>
 			</div>
-			<div className="flex items-center gap-2 pl-11 sm:pl-0">
+			<div className="flex items-center gap-2 pl-9 sm:pl-0">
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Link
@@ -365,13 +366,13 @@ function RepoCommitsRowsSkeleton() {
 					className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
 				>
 					<div className="flex items-start gap-3">
-						<Skeleton className="size-8 shrink-0 rounded-full" />
+						<Skeleton className="mt-1 size-6 shrink-0 rounded-full" />
 						<div className="min-w-0 flex-1 space-y-2">
 							<Skeleton className="h-4 w-full max-w-md rounded" />
 							<Skeleton className="h-3.5 w-48 rounded" />
 						</div>
 					</div>
-					<Skeleton className="ml-11 h-7 w-20 rounded-md sm:ml-0" />
+					<Skeleton className="ml-9 h-7 w-20 rounded-md sm:ml-0" />
 				</div>
 			))}
 		</div>
