@@ -300,7 +300,6 @@ export function createAppQueryClient() {
 	const queryClient = new QueryClient({
 		defaultOptions: {
 			queries: {
-				refetchOnWindowFocus: false,
 				retry: 1,
 				networkMode: "online",
 			},
