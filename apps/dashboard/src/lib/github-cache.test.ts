@@ -363,7 +363,7 @@ describe("getOrRevalidateGitHubResource", () => {
 		expect(result).toEqual({ login: "adn" });
 
 		const updatedEntry = await store.get("user-1::viewer::null");
-		expect(updatedEntry?.freshUntil).toBe(300_500);
+		expect(updatedEntry?.freshUntil).toBe(90_500);
 		expect(updatedEntry?.rateLimitRemaining).toBe(10);
 	});
 

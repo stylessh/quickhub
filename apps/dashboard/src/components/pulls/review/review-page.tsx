@@ -138,17 +138,11 @@ export function ReviewPage() {
 	// Stable store for active file — updates bypass ReviewPage renders entirely
 	const activeFileStore = useRef(createActiveFileStore(null)).current;
 
-	const pageQuery = useQuery({
-		...githubPullPageQueryOptions(scope, input),
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-	});
+	const pageQuery = useQuery(githubPullPageQueryOptions(scope, input));
 
-	const fileSummariesQuery = useInfiniteQuery({
-		...githubPullFileSummariesQueryOptions(scope, input),
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-	});
+	const fileSummariesQuery = useInfiniteQuery(
+		githubPullFileSummariesQueryOptions(scope, input),
+	);
 
 	// Auto-fetch remaining pages so the sidebar streams in the whole tree
 	// without requiring user interaction. Each page is ~100 files, so for a
@@ -167,11 +161,9 @@ export function ReviewPage() {
 		fileSummariesQuery.fetchNextPage,
 	]);
 
-	const filesQuery = useInfiniteQuery({
-		...githubPullFilesInfiniteQueryOptions(scope, input),
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-	});
+	const filesQuery = useInfiniteQuery(
+		githubPullFilesInfiniteQueryOptions(scope, input),
+	);
 
 	// Auto-fetch remaining pages of patches in the background so that by the
 	// time the user scrolls deeper into the PR, the data is already there.
@@ -188,14 +180,12 @@ export function ReviewPage() {
 	]);
 
 	const hasDiffPayload = filesQuery.data !== undefined;
-	const reviewCommentsQuery = useQuery({
-		...githubPullReviewCommentsQueryOptions(scope, input),
-		refetchOnWindowFocus: false,
-	});
-	const threadStatusesQuery = useQuery({
-		...githubReviewThreadStatusesQueryOptions(scope, input),
-		refetchOnWindowFocus: false,
-	});
+	const reviewCommentsQuery = useQuery(
+		githubPullReviewCommentsQueryOptions(scope, input),
+	);
+	const threadStatusesQuery = useQuery(
+		githubReviewThreadStatusesQueryOptions(scope, input),
+	);
 	useGitHubSignalStream(webhookRefreshTargets);
 
 	const pr = pageQuery.data?.detail ?? null;

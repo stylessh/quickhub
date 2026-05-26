@@ -69,11 +69,9 @@ export function CommitPage() {
 	const activeFileStore = useRef(createActiveFileStore(null)).current;
 	const diffPaneRef = useRef<CommitDiffPaneHandle>(null);
 
-	const commitQuery = useQuery({
-		...githubRepoCommitQueryOptions(scope, { owner, repo, sha }),
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-	});
+	const commitQuery = useQuery(
+		githubRepoCommitQueryOptions(scope, { owner, repo, sha }),
+	);
 
 	const commit = commitQuery.data;
 

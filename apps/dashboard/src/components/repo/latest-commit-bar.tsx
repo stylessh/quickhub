@@ -39,8 +39,6 @@ export function LatestCommitBar({
 			ref === defaultBranch && defaultBranchTip != null
 				? defaultBranchTip
 				: undefined,
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
 	});
 
 	const commit = tipQuery.data;
