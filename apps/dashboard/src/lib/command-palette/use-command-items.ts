@@ -222,6 +222,25 @@ export function getCommandSearchItems(
 
 	const items: CommandItem[] = [];
 
+	for (const repo of result.repos) {
+		items.push({
+			id: `repo:${repo.id}`,
+			label: repo.fullName,
+			group: "Repositories",
+			icon: CodeIcon,
+			keywords: [repo.name, repo.owner, repo.language ?? ""].filter(Boolean),
+			action: {
+				type: "navigate",
+				to: `/${repo.owner}/${repo.name}`,
+			},
+			meta: {
+				language: repo.language,
+				stars: repo.stars,
+				updatedAt: repo.updatedAt ?? undefined,
+			},
+		});
+	}
+
 	for (const pr of result.pulls) {
 		const prState = getPrIcon(pr);
 		items.push({

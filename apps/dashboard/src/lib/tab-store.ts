@@ -6,6 +6,7 @@ export type TabType =
 	| "review"
 	| "repo"
 	| "commit"
+	| "commits"
 	| "actions";
 
 export interface Tab {
@@ -30,6 +31,7 @@ const VALID_TAB_TYPES = {
 	review: true,
 	repo: true,
 	commit: true,
+	commits: true,
 	actions: true,
 } satisfies Record<TabType, true>;
 
